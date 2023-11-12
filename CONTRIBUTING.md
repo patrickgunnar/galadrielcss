@@ -1,6 +1,6 @@
-## Welcome to Galadriel.js!
+## Welcome to Galadriel.CSS!
 
-Greetings from the realm of Galadriel.js! 🌟 We invite fellow wizards of code and web artisans to embark on a magical journey with us. Galadriel.js, our creation, is a beacon of enchantment in the world of JavaScript libraries. Join us in our quest to weave spells of elegance and innovation into the fabric of the web.
+Greetings from the realm of Galadriel.CSS! 🌟 We invite fellow wizards of code and web artisans to embark on a magical journey with us. Galadriel.CSS, our creation, is a beacon of enchantment in the world of JavaScript libraries. Join us in our quest to weave spells of elegance and innovation into the fabric of the web.
 
 **Your Magic Awaits! ✨**
 
@@ -11,4 +11,4 @@ Feel free to reach out to us through [LinkedIn](https://www.linkedin.com/in/patr
 
 ---
 
-*Thank you for considering to contribute to Galadriel.js! Your skills and insights are invaluable. Together, let's craft digital wonders that leave an indelible mark. May your path be filled with brilliance and creativity!* 🙌
+*Thank you for considering to contribute to Galadriel.CSS! Your skills and insights are invaluable. Together, let's craft digital wonders that leave an indelible mark. May your path be filled with brilliance and creativity!* 🙌

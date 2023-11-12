@@ -35,7 +35,7 @@ async function assembleApplicationStyles() {
         });
 
         // starting log
-        logger.now(logger.makeBold("Galadriel.js build process just started"));
+        logger.now(logger.makeBold("Galadriel.CSS build process just started"));
 
         // loops through the array of files
         for (const __path of files) {
@@ -60,7 +60,7 @@ async function assembleApplicationStyles() {
         }
 
         // ending log
-        logger.now(logger.makeBold("Galadriel.js build ended successfully"));
+        logger.now(logger.makeBold("Galadriel.CSS build ended successfully"));
     } catch (error) {
         console.error("An error occurred:", error);
     }

@@ -59,7 +59,7 @@ function spectraScribe() {
         });
 
         // starting log
-        logger.now(logger.makeBold("Galadriel.js just started"));
+        logger.now(logger.makeBold("Galadriel.CSS just started"));
     } catch (error) {
         console.error("An error occurred:", error);
     }

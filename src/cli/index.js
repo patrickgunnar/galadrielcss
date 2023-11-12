@@ -9,21 +9,21 @@ const { wizardBabel } = require("./babel");
 yargs
     .command({
         command: "init",
-        describe: "Configure the Galadriel.js environment",
+        describe: "Configure the Galadriel.CSS environment",
         handler: (_) => {
             galadrielInit();
         },
     })
     .command({
         command: "build",
-        describe: "Galadriel.js build process",
+        describe: "Galadriel.CSS build process",
         handler: (_) => {
             assembleApplicationStyles();
         },
     })
     .command({
         command: "dev",
-        describe: "Galadriel.js development process",
+        describe: "Galadriel.CSS development process",
         handler: (_) => {
             spectraScribe();
         },
