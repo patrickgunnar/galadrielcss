@@ -1,6 +1,6 @@
 {
   "name": "galadrielcss-linux-x64-musl",
-  "version": "0.0.0",
+  "version": "1.0.0-beta",
   "os": [
     "linux"
   ],
