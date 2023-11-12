@@ -64,19 +64,19 @@
   },
   "packageManager": "yarn@4.0.1",
   "optionalDependencies": {
-    "galadrielcss-win32-x64-msvc": "1.0.0-beta",
-    "galadrielcss-darwin-x64": "1.0.0-beta",
-    "galadrielcss-linux-x64-gnu": "1.0.0-beta",
-    "galadrielcss-darwin-arm64": "1.0.0-beta",
-    "galadrielcss-android-arm64": "1.0.0-beta",
-    "galadrielcss-linux-arm64-gnu": "1.0.0-beta",
-    "galadrielcss-linux-arm64-musl": "1.0.0-beta",
-    "galadrielcss-win32-arm64-msvc": "1.0.0-beta",
-    "galadrielcss-linux-arm-gnueabihf": "1.0.0-beta",
-    "galadrielcss-linux-x64-musl": "1.0.0-beta",
-    "galadrielcss-freebsd-x64": "1.0.0-beta",
-    "galadrielcss-win32-ia32-msvc": "1.0.0-beta",
-    "galadrielcss-android-arm-eabi": "1.0.0-beta",
-    "galadrielcss-darwin-universal": "1.0.0-beta"
+    "galadrielcss-win32-x64-msvc": "1.0.0-beta.0.1.0",
+    "galadrielcss-darwin-x64": "1.0.0-beta.0.1.0",
+    "galadrielcss-linux-x64-gnu": "1.0.0-beta.0.1.0",
+    "galadrielcss-darwin-arm64": "1.0.0-beta.0.1.0",
+    "galadrielcss-android-arm64": "1.0.0-beta.0.1.0",
+    "galadrielcss-linux-arm64-gnu": "1.0.0-beta.0.1.0",
+    "galadrielcss-linux-arm64-musl": "1.0.0-beta.0.1.0",
+    "galadrielcss-win32-arm64-msvc": "1.0.0-beta.0.1.0",
+    "galadrielcss-linux-arm-gnueabihf": "1.0.0-beta.0.1.0",
+    "galadrielcss-linux-x64-musl": "1.0.0-beta.0.1.0",
+    "galadrielcss-freebsd-x64": "1.0.0-beta.0.1.0",
+    "galadrielcss-win32-ia32-msvc": "1.0.0-beta.0.1.0",
+    "galadrielcss-android-arm-eabi": "1.0.0-beta.0.1.0",
+    "galadrielcss-darwin-universal": "1.0.0-beta.0.1.0"
   }
 }
