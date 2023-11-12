@@ -6,7 +6,7 @@
   "homepage": "https://galadrielcss.vercel.app/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/patrickgunnar/galadrieljs"
+    "url": "https://github.com/patrickgunnar/galadrielcss"
   },
   "main": "main.js",
   "types": "main.d.ts",
