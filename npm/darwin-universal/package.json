@@ -1,0 +1,15 @@
+{
+  "name": "galadrielcss-darwin-universal",
+  "version": "0.0.0",
+  "os": [
+    "darwin"
+  ],
+  "main": "galadrielcss.darwin-universal.node",
+  "files": [
+    "galadrielcss.darwin-universal.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}

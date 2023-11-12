@@ -1,0 +1,66 @@
+{
+  "name": "galadrielcss",
+  "description": "Galadriel.CSS is a javaScript object-based approach for style creation.",
+  "author": "Patrick Gunnar",
+  "version": "1.0.0-beta",
+  "homepage": "https://galadrielcss.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patrickgunnar/galadrieljs"
+  },
+  "main": "main.js",
+  "types": "main.d.ts",
+  "bin": {
+    "galadriel": "./src/cli.js",
+    "galadrieljs": "./src/cli.js"
+  },
+  "napi": {
+    "name": "galadrielcss",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-linux-android",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-pc-windows-msvc",
+        "armv7-unknown-linux-gnueabihf",
+        "x86_64-unknown-linux-musl",
+        "x86_64-unknown-freebsd",
+        "i686-pc-windows-msvc",
+        "armv7-linux-androideabi",
+        "universal-apple-darwin"
+      ]
+    }
+  },
+  "license": "MIT",
+  "ava": {
+    "timeout": "3m"
+  },
+  "engines": {
+    "node": ">= 10"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "ava",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "dependencies": {
+    "@mapbox/node-pre-gyp": "^1.0.11",
+    "@napi-rs/cli": "^2.16.5",
+    "@types/lodash": "^4.14.199",
+    "ava": "^5.1.1",
+    "chokidar": "^3.5.3",
+    "glob": "^10.3.10",
+    "lodash": "^4.17.21",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.16.5",
+    "ava": "^5.1.1"
+  },
+  "packageManager": "yarn@4.0.1"
+}
