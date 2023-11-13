@@ -1,7 +1,7 @@
 name: CI
 env:
   DEBUG: napi:*
-  APP_NAME: ddddd
+  APP_NAME: galadrielcss
   MACOSX_DEPLOYMENT_TARGET: '10.13'
 permissions:
   contents: write
