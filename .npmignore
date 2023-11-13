@@ -10,7 +10,6 @@ rustfmt.toml
 .yarn
 __test__
 renovate.json
-yarn.lock
 
 build/main.css.map
 build/main.css
