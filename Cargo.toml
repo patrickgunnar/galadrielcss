@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "galadrielcss"
-version = "1.0.0-beta.0.1.1"
+version = "1.0.0-beta.0.2.0"
 
 [lib]
 crate-type = ["cdylib"]
