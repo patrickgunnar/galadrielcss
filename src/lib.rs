@@ -17,7 +17,6 @@ use core::{
 };
 
 use lazy_static::lazy_static;
-use termion::style;
 use chrono::prelude::*;
 use std::collections::HashMap;
 use linked_hash_map::LinkedHashMap;
@@ -43,7 +42,7 @@ lazy_static! {
 }
 
 fn bold_maker(message: String) -> String {
-  format!("{}{}{}", style::Bold, message, style::Reset)
+  format!("\x1B[1m{}\x1B[0m", message)
 }
 
 fn console_logger(message: String) -> () {
