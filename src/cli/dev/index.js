@@ -39,19 +39,8 @@ function spectraScribe() {
             // if current path does not include a starting dot
             if (__path[0] !== ".") {
                 try {
-                    // get the starting time
-                    const startTime = new Date();
-
-                    // console log the processing path 
-                    logger.now(`processing the path: ${logger.makeBold(__path)}`);
                     // process the path content
                     processContent(path.resolve(__path));
-
-                    // get the ending time
-                    const endTime = new Date();
-
-                    // log the successful completion with elapsed time
-                    logger.now(`CSS generated successfully in ${logger.makeBold(endTime - startTime)} ms`);
                 } catch (error) {
                     console.error("An error occurred:", error);
                 }
@@ -59,7 +48,9 @@ function spectraScribe() {
         });
 
         // starting log
-        logger.now(logger.makeBold("Galadriel.CSS just started"));
+        logger.message(logger.makeBold(
+            "\n----------------------------------------------\n   Galadriel.CSS just started\n----------------------------------------------"
+        ));
     } catch (error) {
         console.error("An error occurred:", error);
     }

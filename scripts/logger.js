@@ -18,7 +18,7 @@ class Logger {
             ? this.makeBold(this.#getCurrentTime())
             : this.#getCurrentTime();
 
-        console.log(`[${now}]: ${message}`);
+        console.log(`\tAt ${now} ---> ${message}`);
     }
 
     message(message, bold = false) {

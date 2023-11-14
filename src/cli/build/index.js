@@ -35,32 +35,23 @@ async function assembleApplicationStyles() {
         });
 
         // starting log
-        logger.now(logger.makeBold("Galadriel.CSS build process just started"));
+        logger.message(logger.makeBold(
+            "\n----------------------------------------------\n   Galadriel.CSS build process just started\n----------------------------------------------"
+        ));
 
         // loops through the array of files
         for (const __path of files) {
             // if current path does not include a starting dot
             if (__path[0] !== ".") {
-                // get the starting time
-                const startTime = new Date();
-
-                // console log the processing path
-                logger.now(`processing the path: ${logger.makeBold(__path)}`);
                 // process the path content
                 processContent(path.resolve(__path));
-
-                // get the ending time
-                const endTime = new Date();
-
-                // log the successful completion with elapsed time
-                logger.now(
-                    `CSS generated successfully in ${logger.makeBold(endTime - startTime)} ms`
-                );
             }
         }
 
         // ending log
-        logger.now(logger.makeBold("Galadriel.CSS build ended successfully"));
+        logger.message(logger.makeBold(
+            "----------------------------------------------\n   Galadriel.CSS build ended successfully\n"
+        ));
     } catch (error) {
         console.error("An error occurred:", error);
     }

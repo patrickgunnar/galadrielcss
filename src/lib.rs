@@ -17,13 +17,15 @@ use core::{
 };
 
 use lazy_static::lazy_static;
+use termion::style;
+use chrono::prelude::*;
 use std::collections::HashMap;
 use linked_hash_map::LinkedHashMap;
 use std::sync::Mutex;
 use napi::Result;
 use serde_json::Value;
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use std::thread;
 use std::{
   fs::{self, File},
@@ -38,6 +40,19 @@ extern crate napi_derive;
 lazy_static! {
   static ref GENERATED_CSS_STYLES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
   static ref CRAFT_STYLES_JSON: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+}
+
+fn bold_maker(message: String) -> String {
+  format!("{}{}{}", style::Bold, message, style::Reset)
+}
+
+fn console_logger(message: String) -> () {
+  // get current time
+  let current_time = Local::now();
+  // format the time
+  let formatted_time = current_time.format("%H:%M:%S%.3f").to_string();
+
+  println!("|    At {} ---> {}", formatted_time, message);
 }
 
 fn collects_static_core_data(key: String, property: String) -> Option<Vec<(String, String)>> {
@@ -635,6 +650,8 @@ fn collects_core_ast_data() -> String {
 
 #[napi]
 pub fn process_content(path: String) -> Result<()> {
+  // get the start time
+  let start_time = Instant::now();
   // creates CSS file state
   let mut css_file_creation = false;
   // collects the contents of the galadriel config file
@@ -704,7 +721,10 @@ pub fn process_content(path: String) -> Result<()> {
     file.read_to_string(&mut file_content)?;
 
     // if the file content is not empty
-    if !file_content.is_empty() {
+    if !file_content.is_empty() && file_content.contains("craftingStyles(") {
+      // print that the processing started
+      console_logger(format!("processing the path: {}", bold_maker(path.to_string())));
+
       // removes all the white spaces outside quotes and break lines
       let clean_code = clear_white_spaces_and_break_lines_from_code(file_content.clone())?;
 
@@ -729,6 +749,8 @@ pub fn process_content(path: String) -> Result<()> {
           // if the modular flag is enabled
           // or the global creation state is true
           if is_modular || css_file_creation {
+            console_logger("collecting generated styles...".to_string());
+
             // collects the generated data from the core ast
             let collected_css_rules = collects_core_ast_data();
 
@@ -745,6 +767,8 @@ pub fn process_content(path: String) -> Result<()> {
 
               // if path without extension is not empty
               if !file_path[0].is_empty() {
+                console_logger("generating CSS file...".to_string());
+
                 // generates the CSS file path
                 // if the modular flag is enabled
                 let css_file_path = format!("{}.css", file_path[0]);
@@ -753,7 +777,10 @@ pub fn process_content(path: String) -> Result<()> {
                 if !css_file_path.is_empty() {
                   // Create the CSS file write the CSS content
                   if let Err(_) = fs::write(css_file_path.clone(), collected_css_rules) {
-                    println!("CSS file not generated!");
+                    console_logger(bold_maker("CSS file not generated!".to_string()));
+                  } else {
+                    // print that the CSS file has been generated
+                    console_logger(format!("CSS file generated successfully on: {}", bold_maker(css_file_path.to_string())));
                   }
 
                   // checks if the CSS file exists
@@ -772,6 +799,9 @@ pub fn process_content(path: String) -> Result<()> {
                       // if the file content does not contain the import of the CSS file
                       // and if the modular flag is enabled
                       if !&file_content.contains(name_str) && is_modular {
+                        // prints the importing process just started
+                        console_logger("importing the generated CSS file...".to_string());
+
                         // holds the file content
                         let mut file_content_vec: Vec<&str> = file_content.split("\n").collect();
                         // holds the index of the last import statement
@@ -795,16 +825,42 @@ pub fn process_content(path: String) -> Result<()> {
                         if !file_content_vec.is_empty() {
                           // Creates the file content with the import statement
                           if let Err(_) = fs::write(path.clone(), file_content_vec.join("\n")) {
-                            println!("CSS file import statement not appended to the current file!");
+                            console_logger(bold_maker("CSS file import statement not appended to the current file!".to_string()));
+                          } else {
+                            console_logger("CSS file imported successfully!".to_string());
                           }
+                        } else {
+                          console_logger(bold_maker("Something went wrong".to_string()));
                         }
+                      } else {
+                        console_logger("CSS file already imported!".to_string());
                       }
+                    } else {
+                      console_logger(bold_maker("no CSS file name to be used!".to_string()));
                     }
+                  } else {
+                    console_logger(bold_maker("no CSS file name found!".to_string()));
                   }
+
+                  // get the end time
+                  let end_time = Instant::now();
+                  // calc the elapsed time
+                  let elapsed_time = end_time - start_time;
+
+                  // prints that the process has finished
+                  console_logger(format!("current process has finished in {} seconds", bold_maker(format!("{:.9}", elapsed_time.as_secs_f64()))));
+                } else {
+                  console_logger(bold_maker("CSS file not generated - no CSS path".to_string()));
                 }
+              } else {
+                console_logger(bold_maker("CSS file not generated - no file path".to_string()));
               }
+            } else {
+              console_logger(bold_maker("no styles collected - process has just stopped".to_string()));
             }
           }
+        } else {
+          console_logger(bold_maker("no styles instantiation - path not processed".to_string()));
         }
       }
     }
