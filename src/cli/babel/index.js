@@ -6,7 +6,7 @@ function wizardBabel() {
     const logger = new Logger();
     
     // babel configuration
-    const babelConfig = `{\n\t"plugins": ["galadrieljs/alchemy"]\n}\n`;
+    const babelConfig = `{\n\t"plugins": ["galadrielcss/alchemy"]\n}\n`;
     // collects the root directory
     const rootPath = process.cwd();
     // creates babel path to the root directory
