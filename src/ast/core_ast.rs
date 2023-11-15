@@ -320,6 +320,8 @@ lazy_static! {
         media_query_variables.insert("minStandardDesktops".to_string(), vec![]);
         media_query_variables.insert("minLargeDesktops".to_string(), vec![]);
         media_query_variables.insert("minExtraLargeDesktops".to_string(), vec![]);
+        media_query_variables.insert("min4KScreen".to_string(), vec![]);
+        media_query_variables.insert("max4KScreen".to_string(), vec![]);
         media_query_variables.insert("maxExtraLargeDesktops".to_string(), vec![]);
         media_query_variables.insert("maxLargeDesktops".to_string(), vec![]);
         media_query_variables.insert("maxStandardDesktops".to_string(), vec![]);
