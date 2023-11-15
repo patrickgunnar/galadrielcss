@@ -120,8 +120,8 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         result.push('K');
         result.push(';');
       }
-      // if char is a white space
-      ' ' if !inside_quotes => continue,
+      // if char is a white space or tab space
+      ' ' | '\t' if !inside_quotes => continue,
       // else, push the char into the result
       _ => result.push(c),
     }
