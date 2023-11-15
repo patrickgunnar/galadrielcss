@@ -49,7 +49,7 @@ function spectraScribe() {
 
         // starting log
         logger.message(logger.makeBold(
-            "\n----------------------------------------------\n   Galadriel.CSS just started\n----------------------------------------------"
+            "---------------------------------------------- Galadriel.CSS just started ----------------------------------------------"
         ));
     } catch (error) {
         console.error("An error occurred:", error);

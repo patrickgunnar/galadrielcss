@@ -17,14 +17,22 @@ yargs
     .command({
         command: "build",
         describe: "Galadriel.CSS build process",
-        handler: (_) => {
-            assembleApplicationStyles();
+        handler: async (_) => {
+            // clears the terminal
+            console.clear();
+            // calls the build process
+            await assembleApplicationStyles();
         },
     })
     .command({
         command: "dev",
         describe: "Galadriel.CSS development process",
-        handler: (_) => {
+        handler: async (_) => {
+            // calls the build process
+            await assembleApplicationStyles();
+            // clears the terminal
+            console.clear();
+            // calls the watcher
             spectraScribe();
         },
     })
