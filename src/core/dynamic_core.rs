@@ -113,6 +113,8 @@ lazy_static! {
         map.insert("targetPosition".to_string(), "target-position".to_string());
         map.insert("color".to_string(), "color".to_string());
         map.insert("direction".to_string(), "direction".to_string());
+        map.insert("flexDirection".to_string(), "flex-direction".to_string());
+        map.insert("flexWrap".to_string(), "flex-wrap".to_string());
         map.insert("letterSpacing".to_string(), "letter-spacing".to_string());
         map.insert("lineHeight".to_string(), "line-height".to_string());
         map.insert("lineBreak".to_string(), "line-break".to_string());
@@ -240,6 +242,9 @@ lazy_static! {
         map.insert("justifySelf".to_string(), "justify-self".to_string());
         map.insert("justifyContent".to_string(), "justify-content".to_string());
         map.insert("justifyItems".to_string(), "justify-items".to_string());
+        map.insert("alignSelf".to_string(), "align-self".to_string());
+        map.insert("alignContent".to_string(), "align-content".to_string());
+        map.insert("alignItems".to_string(), "align-items".to_string());
         map.insert("grid".to_string(), "grid".to_string());
         map.insert("gridArea".to_string(), "grid-area".to_string());
         map.insert("gridAutoColumns".to_string(), "grid-auto-columns".to_string());
@@ -291,11 +296,13 @@ lazy_static! {
         map.insert("leftPage".to_string(), ":left-page".to_string());
         map.insert("rightPage".to_string(), ":right-page".to_string());
         map.insert("empty".to_string(), ":empty".to_string());
+        map.insert("minExtraLargeDesktops".to_string(), "#min-width: 1440px".to_string());
         map.insert("minLargeDesktops".to_string(), "#min-width: 1200px".to_string());
         map.insert("minStandardDesktops".to_string(), "#min-width: 992px".to_string());
         map.insert("minPortraitTablets".to_string(), "#min-width: 768px".to_string());
         map.insert("minLargeSmartphones".to_string(), "#min-width: 426px".to_string());
         map.insert("minStandardSmartphones".to_string(), "#min-width: 320px".to_string());
+        map.insert("maxExtraLargeDesktops".to_string(), "#max-width: 1439px".to_string());
         map.insert("maxLargeDesktops".to_string(), "#max-width: 1199px".to_string());
         map.insert("maxStandardDesktops".to_string(), "#max-width: 991px".to_string());
         map.insert("maxPortraitTablets".to_string(), "#max-width: 767px".to_string());
