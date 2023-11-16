@@ -96,6 +96,8 @@ fn collects_dynamic_core_data(key: String) -> Option<String> {
 fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> {
   // quotes control
   let mut inside_quotes = false;
+  // current quote type
+  let mut quote_type = String::new();
   // result string
   let mut result = String::new();
 
@@ -103,9 +105,18 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
   for c in code.chars() {
     // if char matches a double or single quotes
     match c {
-      '\'' | '"' => {
+      '\'' | '"' if quote_type == c.to_string() || !inside_quotes => {
         // change the value of the quote control
         inside_quotes = !inside_quotes;
+
+        if !inside_quotes {
+          // set quote type
+          quote_type = String::new();
+        } else {
+          // set quote type
+          quote_type = c.clone().to_string();
+        }
+
         // push the char into the result
         result.push(c);
       }
@@ -926,7 +937,7 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
     format!("{}{}{}{}", formatted_data, pseudo_name, media_name, modular_name)
   } else {  // transform the key and the its value into key:value format
     format!("galadriel_{}{}{}{}", 
-      generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone().replace(" ", "")), false, false),
+      generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
       pseudo_name, media_name, modular_name
     )
   };
