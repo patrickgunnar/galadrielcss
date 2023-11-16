@@ -2,7 +2,7 @@
 
 Welcome to Galadriel.CSS, an enchanting JavaScript library designed to empower developers in creating captivating and dynamically responsive user interfaces. Rooted in modularity and simplicity, Galadriel.CSS illuminates the design process, allowing you to craft web applications that captivate users with elegance and optimized performance.
 
-## Current Version: 1.0.0-beta.0.2.6
+## Current Version: 1.0.0-beta.0.2.7
 
 This beta release brings an exciting array of features and enhancements to empower your web development journey. As we move towards the stable release, we invite you to explore the magic of Galadriel.CSS and provide valuable feedback to help us refine and elevate this enchanting library.
 

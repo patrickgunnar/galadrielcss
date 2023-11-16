@@ -424,6 +424,10 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
 
     // checks if the pseudo is a media
     let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
+    // generates a pseudo hash
+    let pseudo_name = if !pseudo_property.is_empty() && !pseudo_property.starts_with("#") { 
+      format!("-{}", generates_hashing_hex(pseudo_property.to_string(), false, true)) 
+    } else { "".to_string() };
 
     // if the current pseudo is a media
     // hash the media and return the hashed string
@@ -439,13 +443,13 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
     // generates the class name
     let class_name = if string_data.contains("$") {
       // replaces the "$" inside it by an empty string and removes spaces
-      format!("{}{}{}{}", 
-        formatted_data, media_name, modular_name, 
+      format!("{}{}{}{}{}", 
+        formatted_data, pseudo_name, media_name, modular_name, 
         if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }
       )
     } else {  // transform the key and the its value into key:value format
-      format!("galadriel_{}{}{}{}", 
-        generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
+      format!("galadriel_{}{}{}{}{}", 
+        generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false), pseudo_name,
         media_name, modular_name,  if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() },
       )
     };
@@ -502,8 +506,8 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
                 // collects the dynamic property
                 if let Some(collected_property) = collects_dynamic_core_data(config_key.to_string()) {
                   // formats the class name
-                  let config_formatted_class_name = format!("{}{}{}{}", 
-                    config_class_name, media_name, modular_name,
+                  let config_formatted_class_name = format!("{}{}{}{}{}", 
+                    config_class_name, pseudo_name, media_name, modular_name,
                     if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }
                   );
 
@@ -899,6 +903,11 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
   // checks if the pseudo is a media
   let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
 
+  // generates a pseudo hash
+  let pseudo_name = if !pseudo_property.is_empty() && !pseudo_property.starts_with("#") { 
+    format!("-{}", generates_hashing_hex(pseudo_property.to_string(), false, true)) 
+  } else { "".to_string() };
+
   // if the current pseudo is a media
   // hash the media and return the hashed string
   let media_name = if !media.is_empty() { 
@@ -915,9 +924,9 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
     // replaces the "$" inside it by an empty string and removes spaces
     format!("{}{}{}", formatted_data, media_name, modular_name)
   } else {  // transform the key and the its value into key:value format
-    format!("galadriel_{}{}{}", 
+    format!("galadriel_{}{}{}{}", 
       generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
-      media_name, modular_name
+      pseudo_name, media_name, modular_name
     )
   };
 
