@@ -926,7 +926,7 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
     format!("{}{}{}{}", formatted_data, pseudo_name, media_name, modular_name)
   } else {  // transform the key and the its value into key:value format
     format!("galadriel_{}{}{}{}", 
-      generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
+      generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone().replace(" ", "")), false, false),
       pseudo_name, media_name, modular_name
     )
   };
