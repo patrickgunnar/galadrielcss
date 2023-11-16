@@ -923,7 +923,7 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
   // generates the class name
   let class_name = if string_data.contains("$") {
     // replaces the "$" inside it by an empty string and removes spaces
-    format!("{}{}{}", formatted_data, media_name, modular_name)
+    format!("{}{}{}{}", formatted_data, pseudo_name, media_name, modular_name)
   } else {  // transform the key and the its value into key:value format
     format!("galadriel_{}{}{}{}", 
       generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
