@@ -424,9 +424,10 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
 
     // checks if the pseudo is a media
     let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
+
     // generates a pseudo hash
-    let pseudo_name = if !pseudo_property.is_empty() && !pseudo_property.starts_with("#") { 
-      format!("-{}", generates_hashing_hex(pseudo_property.to_string(), false, true)) 
+    let pseudo_name = if !pseudo.is_empty() && !pseudo_property.starts_with("#") {
+      format!("-{}", generates_hashing_hex(pseudo.to_string(), false, true)) 
     } else { "".to_string() };
 
     // if the current pseudo is a media
@@ -904,8 +905,8 @@ pub fn alchemy_processing(key: String, data: String, is_modular: bool, file_path
   let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
 
   // generates a pseudo hash
-  let pseudo_name = if !pseudo_property.is_empty() && !pseudo_property.starts_with("#") { 
-    format!("-{}", generates_hashing_hex(pseudo_property.to_string(), false, true)) 
+  let pseudo_name = if !pseudo.is_empty() && !pseudo_property.starts_with("#") { 
+    format!("-{}", generates_hashing_hex(pseudo.to_string(), false, true)) 
   } else { "".to_string() };
 
   // if the current pseudo is a media
