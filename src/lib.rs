@@ -26,6 +26,7 @@ use serde_json::Value;
 use std::io::Read;
 use std::time::{Instant, Duration};
 use std::thread;
+use regex::Regex;
 use std::{
   fs::{self, File},
   path::Path,
@@ -105,7 +106,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
   for c in code.chars() {
     // if char matches a double or single quotes
     match c {
-      '\'' | '"' if quote_type == c.to_string() || !inside_quotes => {
+      '\'' | '"' | '`' if quote_type == c.to_string() || !inside_quotes => {
         // change the value of the quote control
         inside_quotes = !inside_quotes;
 
@@ -203,6 +204,33 @@ fn collects_crafting_styles_from_code(code: String) -> Vec<String> {
   collected_crafting_styles
 }
 
+fn collects_objects_from_ternary(
+  property: String, part: String, nested_content: &mut Vec<String>, accumulator: &mut Vec<String>, is_nested: bool
+) -> () {
+  let pattern = r#"\$\{([^?]+)\s*\?\s*([^:]+)\s*:\s*([^}]+)\}"#;
+  // Create a Regex instance
+  let re = Regex::new(pattern).unwrap();
+
+  // Extract captures from the input
+  if let Some(captures) = re.captures(&part) {
+    // collects the conditional values
+    let option_1 = captures.get(2).map_or("", |m| m.as_str());
+    let option_2 = captures.get(3).map_or("", |m| m.as_str());
+    // generates the property:value pairs
+    let property_value_1 = format!("{}:{}", property, option_1);
+    let property_value_2 = format!("{}:{}", property, option_2);
+
+    // if is a nested object operation
+    if is_nested {
+      nested_content.push(property_value_1.trim().to_string().clone());
+      nested_content.push(property_value_2.trim().to_string().clone());
+    } else {
+      accumulator.push(property_value_1.trim().to_string().clone());
+      accumulator.push(property_value_2.trim().to_string().clone());
+    }
+  }
+}
+
 fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String> {
   // split the string into the the &B94#K; tags
   let crafting_styles_parts: Vec<&str> = crafting_styles.split("&B94#K;").collect();
@@ -219,50 +247,70 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String>
     for part in crafting_styles_parts {
       // if part includes an opened curly bracket
       if part.contains("{") {
-        // loop through splitted str
-        for item in part.split("{") {
-          // if item includes a colon
-          if item.contains(":") {
-            // if item last sign is a colon
-            if item.ends_with(":") {
-              is_nested = true;
-              nested_content.push(item.to_string().clone());
+        // if the current part contains a ternary operation
+        if part.contains("`") {
+          // loops through the splitted parts
+          for cont in part.split("{")  {
+            // if the current part contains a colon and not contains a question mark
+            if cont.contains(":") && !cont.contains("?") {
+              // split the content on the colon
+              let property_value: Vec<&str> = cont.split(":").collect();
 
-              // if item contains an closed curly bracket
-            } else if item.contains("}") {
-              // loop through the splitted item
-              for el in item.split("}") {
-                // if el includes a colon
-                if el.contains(":") {
-                  // if is a nested object operation
-                  if is_nested {
-                    // if el ends with an 2 closed curly bracket
-                    if el.ends_with("}}") {
-                      nested_content.push(el.to_string().clone());
-                      accumulator.push(
-                        serde_json::to_string(&nested_content).unwrap()
-                      );
-                      nested_content.clear();
-                      is_nested = false;
+              // pass the property's value, the current part, 
+              // the nested content vec, the accumulator vec 
+              // and the nested condition
+              collects_objects_from_ternary(
+                property_value[0].to_string(), part.to_string(), &mut nested_content, &mut accumulator, is_nested
+              );
+            }
+          }
+        } else {
+          // loop through splitted str
+          for item in part.split("{") {
+            // if item includes a colon
+            if item.contains(":") {
+              // if item last sign is a colon
+              if item.ends_with(":") {
+                is_nested = true;
+                nested_content.push(item.to_string().clone());
+
+                // if item contains an closed curly bracket
+              } else if item.contains("}") {
+                // loop through the splitted item
+                for el in item.split("}") {
+                  // if el includes a colon
+                  if el.contains(":") {
+                    // if is a nested object operation
+                    if is_nested {
+                      // if el ends with an 2 closed curly bracket
+                      if el.ends_with("}}") {
+                        nested_content.push(el.to_string().clone());
+                        accumulator.push(
+                          serde_json::to_string(&nested_content).unwrap()
+                        );
+                        nested_content.clear();
+                        is_nested = false;
+                      } else {
+                        nested_content.push(el.to_string().clone());
+                      }
                     } else {
-                      nested_content.push(el.to_string().clone());
+                      accumulator.push(el.to_string().clone());
                     }
-                  } else {
-                    accumulator.push(el.to_string().clone());
                   }
                 }
-              }
-              // if item does not include an equals sign
-            } else if !item.contains("=") {
-              // if is a nested object operation
-              if is_nested {
-                nested_content.push(item.to_string().clone());
-              } else {
-                accumulator.push(item.to_string().clone());
+                // if item does not include an equals sign
+              } else if !item.contains("=") {
+                // if is a nested object operation
+                if is_nested {
+                  nested_content.push(item.to_string().clone());
+                } else {
+                  accumulator.push(item.to_string().clone());
+                }
               }
             }
           }
         }
+        
         // if part includes a closed  curly bracket
       } else if part.contains("}") {
         // loop through the splitted part
@@ -422,7 +470,7 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
     let string_data = if !transformed_json.is_empty() {
       transformed_json
     } else { // replace the single quotes to double quotes and transform the json into a string
-      serde_json::from_str::<String>(&data.replace("'", "\"")).unwrap_or_default()
+      serde_json::from_str::<String>(&data.replace("'", "\"").replace("`", "\"")).unwrap_or_default()
     };
     
     // if is a modular config and file_path is not empty
