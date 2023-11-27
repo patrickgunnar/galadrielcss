@@ -52,7 +52,7 @@ fn console_logger(message: String) -> () {
   // format the time
   let formatted_time = current_time.format("%H:%M:%S%.3f").to_string();
 
-  println!("|    At {} ---> {}", formatted_time, message);
+  println!("{} -> {}", bold_maker(formatted_time), message);
 }
 
 fn collects_static_core_data(key: String, property: String) -> Option<Vec<(String, String)>> {
@@ -516,7 +516,9 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
     let string_data = if !transformed_json.is_empty() {
       transformed_json
     } else { // replace the single quotes to double quotes and transform the json into a string
-      serde_json::from_str::<String>(&data.replace("'", "\"").replace("`", "\"")).unwrap_or_default()
+      serde_json::from_str::<String>(
+        &data.replace("'", "&8T;").replace("\"", "'").replace("&8T;", "\"").replace("`", "\"")
+      ).unwrap_or_default()
     };
     
     // if is a modular config and file_path is not empty
@@ -832,7 +834,11 @@ pub fn process_content(path: String) -> Result<()> {
     // if the file content is not empty
     if !file_content.is_empty() && file_content.contains("craftingStyles(") {
       // print that the processing started
-      console_logger(format!("processing the path: {}", bold_maker(path.to_string())));
+      if let Some(s) = Path::new(&path).file_name() { 
+        if let Some(c) = s.to_str() {
+          console_logger(format!("processing the file '{}'.", bold_maker(c.to_string())));
+        }
+      }
 
       // removes all the white spaces outside quotes and break lines
       let clean_code = clear_white_spaces_and_break_lines_from_code(file_content.clone())?;
@@ -889,7 +895,13 @@ pub fn process_content(path: String) -> Result<()> {
                     console_logger(bold_maker("CSS file not generated!".to_string()));
                   } else {
                     // print that the CSS file has been generated
-                    console_logger(format!("CSS file generated successfully on: {}", bold_maker(css_file_path.to_string())));
+                    if let Some(s) = Path::new(&path).file_name() { 
+                      if let Some(c) = s.to_str() {
+                        let file_n: Vec<&str> = c.split(".").collect();
+
+                        console_logger(format!("CSS file generated successfully as '{}.css'.", bold_maker(file_n[0].to_string())));
+                      }
+                    }
                   }
 
                   // checks if the CSS file exists
