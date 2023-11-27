@@ -97,6 +97,8 @@ fn collects_dynamic_core_data(key: String) -> Option<String> {
 fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> {
   // quotes control
   let mut inside_quotes = false;
+  // backticks control
+  let mut inside_backticks = false;
   // current quote type
   let mut quote_type = String::new();
   // result string
@@ -106,7 +108,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
   for c in code.chars() {
     // if char matches a double or single quotes
     match c {
-      '\'' | '"' | '`' if quote_type == c.to_string() || !inside_quotes => {
+      '\'' | '"' if quote_type == c.to_string() || !inside_quotes => {
         // change the value of the quote control
         inside_quotes = !inside_quotes;
 
@@ -121,6 +123,32 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         // push the char into the result
         result.push(c);
       }
+      '`' => {
+        inside_backticks = !inside_backticks;
+
+        // push the char into the result
+        result.push(c);
+      }
+      // if the current char is an opening bracket and it is inside backticks
+      '{' if inside_backticks => {
+        result.push('&');
+        result.push('O');
+        result.push('P');
+        result.push('T');
+        result.push('3');
+        result.push('R');
+        result.push(';');
+      }
+      // if the current char is an closing bracket and it is inside backticks
+      '}' if inside_backticks => {
+        result.push('&');
+        result.push('C');
+        result.push('L');
+        result.push('T');
+        result.push('3');
+        result.push('R');
+        result.push(';');
+      }
       // if the current char is a comma outside quotes
       // push &B94#K; (break) tag into the result
       ',' if !inside_quotes => {
@@ -133,7 +161,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         result.push(';');
       }
       // if char is a white space or tab space
-      ' ' | '\t' if !inside_quotes => continue,
+      ' ' | '\t' if !inside_quotes && !inside_backticks => continue,
       // else, push the char into the result
       _ => result.push(c),
     }
@@ -205,30 +233,39 @@ fn collects_crafting_styles_from_code(code: String) -> Vec<String> {
 }
 
 fn collects_objects_from_ternary(
-  property: String, part: String, nested_content: &mut Vec<String>, accumulator: &mut Vec<String>, is_nested: bool
+  part: String, nested_content: &mut Vec<String>, accumulator: &mut Vec<String>, is_nested: bool
 ) -> () {
-  let pattern = r#"\$\{([^?]+)\s*\?\s*([^:]+)\s*:\s*([^}]+)\}"#;
-  // Create a Regex instance
-  let re = Regex::new(pattern).unwrap();
+  // loops through the splitted parts
+  for content in part.split("$&OPT3R;")  {
+    // if the current part contains a colon and not contains a question mark
+    if content.contains(":") && !content.contains("?") {
+      // split the content on the colon
+      let property_value: Vec<&str> = content.split(":").collect();
+      let pattern = r#"\$\{([^?]+)\s*\?\s*([^:]+)\s*:\s*([^}]+)\}"#;
+      // Create a Regex instance
+      let re = Regex::new(pattern).unwrap();
 
-  // Extract captures from the input
-  if let Some(captures) = re.captures(&part) {
-    // collects the conditional values
-    let option_1 = captures.get(2).map_or("", |m| m.as_str());
-    let option_2 = captures.get(3).map_or("", |m| m.as_str());
-    // generates the property:value pairs
-    let property_value_1 = format!("{}:{}", property, option_1);
-    let property_value_2 = format!("{}:{}", property, option_2);
+      // Extract captures from the input
+      if let Some(captures) = re.captures(&part.replace("&OPT3R;", "{").replace("&CLT3R;", "}")) {
+        // collects the conditional values
+        let option_1 = captures.get(2).map_or("", |m| m.as_str());
+        let option_2 = captures.get(3).map_or("", |m| m.as_str());
+        // generates the property:value pairs
+        let property_value_1 = format!("{}:{}", property_value[0], option_1);
+        let property_value_2 = format!("{}:{}", property_value[0], option_2);
 
-    // if is a nested object operation
-    if is_nested {
-      nested_content.push(property_value_1.trim().to_string().clone());
-      nested_content.push(property_value_2.trim().to_string().clone());
-    } else {
-      accumulator.push(property_value_1.trim().to_string().clone());
-      accumulator.push(property_value_2.trim().to_string().clone());
+        // if is a nested object operation
+        if is_nested {
+          nested_content.push(property_value_1.trim().to_string().clone());
+          nested_content.push(property_value_2.trim().to_string().clone());
+        } else {
+          accumulator.push(property_value_1.trim().to_string().clone());
+          accumulator.push(property_value_2.trim().to_string().clone());
+        }
+      }
     }
   }
+  
 }
 
 fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String> {
@@ -247,65 +284,60 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String>
     for part in crafting_styles_parts {
       // if part includes an opened curly bracket
       if part.contains("{") {
-        // if the current part contains a ternary operation
-        if part.contains("`") {
-          // loops through the splitted parts
-          for cont in part.split("{")  {
-            // if the current part contains a colon and not contains a question mark
-            if cont.contains(":") && !cont.contains("?") {
-              // split the content on the colon
-              let property_value: Vec<&str> = cont.split(":").collect();
+        // loop through splitted str
+        for item in part.split("{") {
+          // if item includes a colon
+          if item.contains(":") {
+            // if item last sign is a colon
+            if item.ends_with(":") {
+              is_nested = true;
+              nested_content.push(item.to_string().clone());
 
-              // pass the property's value, the current part, 
-              // the nested content vec, the accumulator vec 
-              // and the nested condition
-              collects_objects_from_ternary(
-                property_value[0].to_string(), part.to_string(), &mut nested_content, &mut accumulator, is_nested
-              );
-            }
-          }
-        } else {
-          // loop through splitted str
-          for item in part.split("{") {
-            // if item includes a colon
-            if item.contains(":") {
-              // if item last sign is a colon
-              if item.ends_with(":") {
-                is_nested = true;
-                nested_content.push(item.to_string().clone());
-
-                // if item contains an closed curly bracket
-              } else if item.contains("}") {
-                // loop through the splitted item
-                for el in item.split("}") {
-                  // if el includes a colon
-                  if el.contains(":") {
-                    // if is a nested object operation
-                    if is_nested {
-                      // if el ends with an 2 closed curly bracket
-                      if el.ends_with("}}") {
-                        nested_content.push(el.to_string().clone());
-                        accumulator.push(
-                          serde_json::to_string(&nested_content).unwrap()
-                        );
-                        nested_content.clear();
-                        is_nested = false;
-                      } else {
-                        nested_content.push(el.to_string().clone());
-                      }
+              // if item contains an closed curly bracket
+            } else if item.contains("}") {
+              // loop through the splitted item
+              for el in item.split("}") {
+                // if el includes a colon
+                if el.contains(":") {
+                  // if el includes backticks
+                  if el.contains("`") && el.contains("$&OPT3R;") {
+                    // pass the current part, 
+                    // the nested content vec, the accumulator vec 
+                    // and the nested condition
+                    collects_objects_from_ternary(
+                      el.to_string(), &mut nested_content, &mut accumulator, is_nested
+                    );
+                  } else if is_nested { // if is a nested object operation
+                    // if el ends with an 2 closed curly bracket
+                    if el.ends_with("}}") {
+                      nested_content.push(el.to_string().clone());
+                      accumulator.push(
+                        serde_json::to_string(&nested_content).unwrap()
+                      );
+                      nested_content.clear();
+                      is_nested = false;
                     } else {
-                      accumulator.push(el.to_string().clone());
+                      nested_content.push(el.to_string().clone());
                     }
+                  } else {
+                    accumulator.push(el.to_string().clone());
                   }
                 }
+              }
                 // if item does not include an equals sign
-              } else if !item.contains("=") {
-                // if is a nested object operation
-                if is_nested {
-                  nested_content.push(item.to_string().clone());
-                } else {
-                  accumulator.push(item.to_string().clone());
-                }
+            } else if !item.contains("=") {
+              // if item includes backticks
+              if item.contains("`") && item.contains("$&OPT3R;") {
+                // pass the current part, 
+                // the nested content vec, the accumulator vec 
+                // and the nested condition
+                collects_objects_from_ternary(
+                  item.to_string(), &mut nested_content, &mut accumulator, is_nested
+                );
+              } else if is_nested {// if is a nested object operation
+                nested_content.push(item.to_string().clone());
+              } else {
+                accumulator.push(item.to_string().clone());
               }
             }
           }
@@ -315,8 +347,15 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String>
       } else if part.contains("}") {
         // loop through the splitted part
         for item in part.split("}") {
-          // if item includes a colon
-          if item.contains(":") {
+          // if item includes backticks
+          if item.contains("`") && item.contains("$&OPT3R;") {
+            // pass the current part, 
+            // the nested content vec, the accumulator vec 
+            // and the nested condition
+            collects_objects_from_ternary(
+              item.to_string(), &mut nested_content, &mut accumulator, is_nested
+            );
+          } else if item.contains(":") {// if item includes a colon
             // if is a nested object operation
             if is_nested {
               nested_content.push(item.to_string().clone());
@@ -336,8 +375,15 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String>
         }
         // if part includes colon and not include an equals sign
       } else if part.contains(":") && !part.contains("=") {
-        // if is a nested object operation
-        if is_nested {
+        // if part includes backticks
+        if part.contains("`") && part.contains("$&OPT3R;") {
+          // pass the current part, 
+          // the nested content vec, the accumulator vec 
+          // and the nested condition
+          collects_objects_from_ternary(
+            part.to_string(), &mut nested_content, &mut accumulator, is_nested
+          );
+        }else if is_nested {// if is a nested object operation
           nested_content.push(part.to_string().clone());
         } else {
           accumulator.push(part.to_string().clone());
@@ -345,7 +391,7 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String>
       }
     }
   }
-
+  
   accumulator
 }
 
