@@ -17,12 +17,16 @@ function transformTemplateLiteral(property, isModular, filePath, currentPseudo) 
         if (condExpr) {
             // transform the property's consequent
             const classNameConsequent = alchemyProcessing(
-                property.key.name, JSON.stringify(condExpr.consequent.value), isModular, filePath || "", currentPseudo
+                property.key.name, 
+                JSON.stringify(condExpr.consequent.value.replaceAll("\"", "'")), 
+                isModular, filePath || "", currentPseudo
             );
 
             // transform the property's alternate
             const classNameAlternate = alchemyProcessing(
-                property.key.name, JSON.stringify(condExpr.alternate.value), isModular, filePath || "", currentPseudo
+                property.key.name, 
+                JSON.stringify(condExpr.alternate.value.replaceAll("\"", "'")), 
+                isModular, filePath || "", currentPseudo
             );
 
             // if class name consequent/alternate is not empty
@@ -36,7 +40,9 @@ function transformTemplateLiteral(property, isModular, filePath, currentPseudo) 
             if (quasis) {
                 // transform the property's value
                 const className = alchemyProcessing(
-                    property.key.name, JSON.stringify(quasis.value.cooked), isModular, filePath || "", currentPseudo
+                    property.key.name, 
+                    JSON.stringify(quasis.value.cooked.replaceAll("\"", "'")), 
+                    isModular, filePath || "", currentPseudo
                 );
 
                 // if class name is not empty
@@ -67,7 +73,11 @@ function generatesAlchemy(t, node, isModular, filePath) {
             // if the property's value type is a string literal
             if (property.value.type === "StringLiteral") {
                 // transform the property's value
-                const className = alchemyProcessing(property.key.name, JSON.stringify(property.value.value), isModular, filePath || "", "");
+                const className = alchemyProcessing(
+                    property.key.name, 
+                    JSON.stringify(property.value.value.replaceAll("\"", "'")), 
+                    isModular, filePath || "", ""
+                );
 
                 // if class name is not empty
                 if (className) property.value.value = className;
@@ -80,7 +90,9 @@ function generatesAlchemy(t, node, isModular, filePath) {
                     if (nestedProperty.value.type === "StringLiteral") {
                         // transform the property's value
                         const className = alchemyProcessing(
-                            nestedProperty.key.name, JSON.stringify(nestedProperty.value.value), isModular, filePath || "", property.key.name
+                            nestedProperty.key.name, 
+                            JSON.stringify(nestedProperty.value.value.replaceAll("\"", "'")), 
+                            isModular, filePath || "", property.key.name
                         );
 
                         // if class name is not empty
