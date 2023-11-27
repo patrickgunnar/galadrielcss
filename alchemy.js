@@ -7,6 +7,45 @@ const { alchemyProcessing, generatesHashingHex } = require("./index.js");
 const usedObjects = [];
 const transformedNodes = {};
 
+function transformTemplateLiteral(property, isModular, filePath, currentPseudo) {
+    // if the property's value is a conditional expression
+    if (property.value.type === "TemplateLiteral") {
+        // gets the property's expression
+        const condExpr = property.value.expressions[0];
+
+        // if the expression is exists
+        if (condExpr) {
+            // transform the property's consequent
+            const classNameConsequent = alchemyProcessing(
+                property.key.name, JSON.stringify(condExpr.consequent.value), isModular, filePath || "", currentPseudo
+            );
+
+            // transform the property's alternate
+            const classNameAlternate = alchemyProcessing(
+                property.key.name, JSON.stringify(condExpr.alternate.value), isModular, filePath || "", currentPseudo
+            );
+
+            // if class name consequent/alternate is not empty
+            if (classNameConsequent) condExpr.consequent.value = classNameConsequent;
+            if (classNameAlternate) condExpr.alternate.value = classNameAlternate;
+        } else {
+            // gets the property's quasis
+            const quasis = property.value.quasis[0];
+
+            // if the quasis exists
+            if (quasis) {
+                // transform the property's value
+                const className = alchemyProcessing(
+                    property.key.name, JSON.stringify(quasis.value.cooked), isModular, filePath || "", currentPseudo
+                );
+
+                // if class name is not empty
+                if (className) quasis.value.cooked = className;
+            }
+        }
+    }
+}
+
 /**
  * Generates transformations for properties within an object expression.
  *
@@ -46,8 +85,12 @@ function generatesAlchemy(t, node, isModular, filePath) {
 
                         // if class name is not empty
                         if (className) nestedProperty.value.value = className;
+                    } else {
+                        transformTemplateLiteral(nestedProperty, isModular, filePath, property.key.name);
                     }
                 }
+            } else {
+                transformTemplateLiteral(property, isModular, filePath, "");
             }
         }
     } catch (error) {
