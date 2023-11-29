@@ -1,4 +1,4 @@
-import { genClassNames } from "./utils/genClassNames";
+const transformIntoClassNames = require("./utils/transformIntoClassNames");
 
 /**
  * Callback function type returning CraftClassesType.
@@ -6,13 +6,11 @@ import { genClassNames } from "./utils/genClassNames";
  */
 
 /**
- * Process a callback to generate class names using genClassNames.
+ * Process a callback to generate class names using transformIntoClassNames.
  *
  * @param {CallbackType} callback - The callback function.
  * @returns {string} The generated class names.
  */
-function craftingStyles(callback) {
-    return genClassNames(callback());
+module.exports = function craftingStyles(callback) {
+    return transformIntoClassNames(callback());
 }
-
-export { craftingStyles };
