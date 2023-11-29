@@ -168,7 +168,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
   }
 
   // return the result replacing the line breaks
-  Ok(result.replace('\n', ""))
+  Ok(result.replace('\n', "&B94#K;"))
 }
 
 fn collects_crafting_styles_from_code(code: String) -> Vec<String> {
