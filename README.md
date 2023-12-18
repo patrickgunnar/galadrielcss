@@ -1,3 +1,10 @@
+# Galadriel.CSS is no longer supported, from now on use Galadriel3CSS. 
+
+- [Github of Galadriel3CSS] (https://github.com/patrickgunnar/galadriel3css)
+- [NPM package of Galadriel3CSS] (https://www.npmjs.com/package/galadriel3css)
+
+---
+
 # Galadriel.CSS
 
 Welcome to Galadriel.CSS, an enchanting JavaScript library designed to empower developers in creating captivating and dynamically responsive user interfaces. Rooted in modularity and simplicity, Galadriel.CSS illuminates the design process, allowing you to craft web applications that captivate users with elegance and optimized performance.
