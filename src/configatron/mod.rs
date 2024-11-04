@@ -1,4 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
+use tracing::info;
 
 /// Represents configuration settings for the application, deserialized from a JSON file.
 ///
@@ -40,21 +41,29 @@ pub struct ConfigurationJson {
 
 /// Returns `true` as the default value, used for fields requiring an enabled default state.
 fn enabled_by_default() -> bool {
+    info!("Setting default: true");
+
     true
 }
 
 /// Returns an empty `Vec<String>` as the default, used for the `exclude` field.
 fn empty_vector_by_default() -> Vec<String> {
+    info!("Setting default empty vector for exclude paths");
+
     vec![]
 }
 
 /// Provides "0" as the default port, allowing for a wildcard port assignment.
 fn default_wildcard_port() -> String {
+    info!("Setting default wildcard port to '0'");
+
     "0".to_string()
 }
 
 /// Initializes the version to "*" (latest) if not provided, typically used as an initial version indicator.
 fn initial_version() -> String {
+    info!("Setting default version to '*' - latest");
+
     "*".to_string()
 }
 
@@ -63,8 +72,15 @@ where
     D: Deserializer<'de>,
 {
     let port = String::deserialize(deserializer)?;
+    let normalized_port = if port == "*" {
+        "0".to_string()
+    } else {
+        port.clone()
+    };
 
-    Ok(if port == "*" { "0".to_string() } else { port })
+    info!("Normalized port from '{}' to '{}'", port, normalized_port);
+
+    Ok(normalized_port)
 }
 
 /// Represents configuration settings for an application or process, with key parameters
@@ -108,6 +124,12 @@ impl Configatron {
         port: String,
         version: String,
     ) -> Self {
+        info!(
+            "Initializing Galadriel CSS configurations with exclude: {:?}, auto_naming: {}, reset_styles: {}, \
+            minified_styles: {}, port: {}, version: {}",
+            exclude, auto_naming, reset_styles, minified_styles, port, version
+        );
+
         Self {
             exclude,
             auto_naming,
@@ -124,6 +146,8 @@ impl Configatron {
     ///
     /// * `Vec<String>` - A clone of the `exclude` vector.
     pub fn get_exclude(&self) -> Vec<String> {
+        info!("Fetching exclude paths: {:?}", self.exclude);
+
         self.exclude.clone()
     }
 
@@ -133,6 +157,8 @@ impl Configatron {
     ///
     /// * `bool` - `true` if names are to be saved, otherwise `false`.
     pub fn get_auto_naming(&self) -> bool {
+        info!("Fetching auto naming status: {}", self.auto_naming);
+
         self.auto_naming
     }
 
@@ -142,6 +168,8 @@ impl Configatron {
     ///
     /// * `bool` - `true` if styles are to be reset, otherwise `false`.
     pub fn get_reset_styles(&self) -> bool {
+        info!("Fetching reset styles status: {}", self.reset_styles);
+
         self.reset_styles
     }
 
@@ -151,6 +179,8 @@ impl Configatron {
     ///
     /// * `bool` - `true` if styles are to be minified, otherwise `false`.
     pub fn get_minified_styles(&self) -> bool {
+        info!("Fetching minified styles status: {}", self.minified_styles);
+
         self.minified_styles
     }
 
@@ -160,6 +190,8 @@ impl Configatron {
     ///
     /// * `String` - A clone of the `port` value.
     pub fn get_port(&self) -> String {
+        info!("Fetching port: {}", self.port);
+
         self.port.clone()
     }
 
@@ -169,6 +201,8 @@ impl Configatron {
     ///
     /// * `String` - A clone of the `version` value.
     pub fn get_version(&self) -> String {
+        info!("Fetching version: {}", self.version);
+
         self.version.clone()
     }
 }

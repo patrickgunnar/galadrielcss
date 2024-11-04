@@ -1,4 +1,5 @@
 /target
 /mocks
+/logs
 
 galadriel.config.json

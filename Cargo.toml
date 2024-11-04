@@ -26,6 +26,5 @@ tracing-subscriber = { version = "0.3.18", features = ["time"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 ratatui = { version = "0.29.0", features = ["all-widgets"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
-clap = { version = "4.5.20", features = ["derive"] }
 
 nenyr = { path = "/home/patrickgunnar/Área de trabalho/nenyr" }
