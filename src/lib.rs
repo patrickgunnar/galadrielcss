@@ -8,12 +8,9 @@ use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
 use shellscape::{commands::ShellscapeCommands, Shellscape};
-use tracing::{level_filters::LevelFilter, Level};
-use tracing_appender::{non_blocking::NonBlocking, rolling};
-use tracing_subscriber::{
-    fmt::format::{DefaultFields, Format},
-    FmtSubscriber,
-};
+use tracing::Level;
+use tracing_appender::rolling;
+use tracing_subscriber::FmtSubscriber;
 
 mod asts;
 mod baraddur;
@@ -66,8 +63,24 @@ impl GaladrielRuntime {
     }
 
     async fn start_development_mode(&mut self) -> GaladrielResult<()> {
+        // ===================================================================================================================
         // Creates the development logs subscriber.
-        let subscriber = self.generate_log_subscriber();
+        // ===================================================================================================================
+
+        // Generates a subscriber for logging events to a file.
+        //
+        // This creates a log subscriber that writes logs to a file using the `tracing` library.
+        // It sets up a rolling file appender with a log filename generated from `generate_log_filename`.
+        // The subscriber is configured to log events with a severity level of `TRACE` or higher.
+        let file_name = self.generate_log_filename(); // Generate the log filename.
+        let file_appender = rolling::never("logs", file_name); // Create a rolling file appender that writes logs to the specified file.
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender); // Set up non-blocking log writing.
+
+        // Build and return the log subscriber.
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(Level::TRACE) // Set the maximum log level to TRACE.
+            .with_writer(non_blocking) // Use the non-blocking writer.
+            .finish(); // Finalize the subscriber configuration.
 
         // Set logs subscriber.
         tracing::subscriber::set_global_default(subscriber).map_err(|err| {
@@ -75,6 +88,10 @@ impl GaladrielRuntime {
 
             Box::<dyn std::error::Error>::from(err.to_string())
         })?;
+
+        // ===================================================================================================================
+        // END
+        // ===================================================================================================================
 
         tracing::info!("Log subscriber set successfully.");
 
@@ -117,37 +134,40 @@ impl GaladrielRuntime {
     }
 
     async fn development_runtime(&mut self) -> GaladrielResult<()> {
-        // Setting Shellscape terminal interface.
+        // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
-        let mut _shellscape_events = shellscape.create_events(250);
-        let mut interface = shellscape.create_interface()?;
-        let mut shellscape_app = shellscape.create_app(self.configatron.clone());
+        let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
+        let mut interface = shellscape.create_interface()?; // Terminal interface setup
+        let mut shellscape_app = shellscape.create_app(self.configatron.clone()); // Application/state setup for Shellscape
 
-        // Setting Lothlórien pipeline stream.
+        // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
-        let pipeline_listener = pipeline.create_listener().await?;
-        let local_addr = pipeline_listener.local_addr()?;
-        let running_on_port = local_addr.port();
-        let _listener_handler = pipeline.create_pipeline(pipeline_listener);
-        let mut _runtime_sender = pipeline.get_runtime_sender();
+        let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
+        let local_addr = pipeline_listener.local_addr()?; // Get local address for WebSocket server
+        let running_on_port = local_addr.port(); // Extract port from the listener's local address
+        let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
+        let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
 
-        // Setting Barad-dûr observer.
+        // Initialize the Barad-dûr file system observer.
         let mut observer = BaraddurObserver::new();
-        let exclude_matcher = self.construct_exclude_matcher()?;
-        let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250);
+        let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
+        let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250); // Start observing file changes
 
+        // Register the pipeline's server port in temporary storage.
         pipeline.register_server_port_in_temp(running_on_port)?;
+        // Start the Shellscape terminal interface rendering.
         interface.invoke()?;
 
         tracing::info!("Galadriel CSS development runtime initiated.");
 
         loop {
+            // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(&mut shellscape_app) {
                 println!("{:?}", err);
             }
 
             tokio::select! {
-                // Receives events from the Lothlórien pipeline.
+                // Handle events from the Lothlórien pipeline.
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
                         Ok(event) => {
@@ -158,7 +178,7 @@ impl GaladrielRuntime {
                         }
                     }
                 }
-                // Receives events from the Baraddur observer.
+                // Handle events from the Baraddur observer (file system).
                 baraddur_res = observer.next() => {
                     match baraddur_res {
                         Ok(event) => {
@@ -169,12 +189,13 @@ impl GaladrielRuntime {
                         }
                     }
                 }
-                // Receives events from the shellscape/terminal interface.
+                // Handle events from the Shellscape terminal interface.
                 shellscape_res = shellscape.next() => {
                     match shellscape_res {
                         Ok(event) => {
                             let token = shellscape.match_shellscape_event(event);
 
+                            // Exit the loop if the terminate command is received.
                             if token == ShellscapeCommands::Terminate {
                                 break;
                             }
@@ -187,30 +208,63 @@ impl GaladrielRuntime {
             }
         }
 
+        // Clean up: Remove the temporary server port and abort the interface.
         pipeline.remove_server_port_in_temp()?;
         interface.abort()?;
 
         Ok(())
     }
 
+    /// Constructs an exclude matcher for filtering files or directories.
+    ///
+    /// This method uses a builder pattern to construct an `Override` object
+    /// that holds a list of paths to exclude from processing. It reads the exclude
+    /// paths from the configuration, formats them correctly, and returns the built
+    /// `Override` object for further use.
+    ///
+    /// # Returns
+    /// Returns a `GaladrielResult` containing the built `Override` object or an error.
     fn construct_exclude_matcher(&self) -> GaladrielResult<overrides::Override> {
+        // Initialize the override builder with the working directory.
         let mut overrides = overrides::OverrideBuilder::new(self.working_dir.clone());
 
+        // Iterate through the list of excludes from the configuration and add them to the matcher.
         for exclude in self.configatron.get_exclude().iter() {
             overrides.add(&format!("!/{}", exclude.trim_start_matches("/")))?;
         }
 
+        tracing::info!(
+            "Exclude matcher constructed with {} patterns.",
+            self.configatron.get_exclude().len()
+        );
+
+        // Return the built override object.
         Ok(overrides.build()?)
     }
 
+    /// Loads the Galadriel CSS configuration from a JSON file.
+    ///
+    /// This method reads the `galadriel.config.json` file from the working directory
+    /// and deserializes it into a `ConfigurationJson` struct. Then, it uses the configuration
+    /// data to create and apply a new `Configatron` instance to the `GaladrielRuntime`.
+    ///
+    /// If loading and parsing the configuration is successful, the `configatron` is updated.
+    /// If an error occurs during file reading or JSON parsing, it logs the error and returns a result.
+    ///
+    /// # Returns
+    /// Returns `GaladrielResult<()>` indicating success or failure of the configuration load.
     fn load_galadriel_config(&mut self) -> GaladrielResult<()> {
+        // Define the path to the Galadriel configuration file.
         let config_path = self.working_dir.join("galadriel.config.json");
 
         tracing::debug!("Loading Galadriel CSS configuration from {:?}", config_path);
 
+        // Attempt to read the configuration file as a string.
         match std::fs::read_to_string(config_path) {
             Ok(raw_config) => {
+                // Deserialize the JSON string into the ConfigurationJson struct.
                 let config_json: ConfigurationJson = serde_json::from_str(&raw_config)?;
+                // Create a new Configatron instance with the deserialized data.
                 let configatron = Configatron::new(
                     config_json.exclude,
                     config_json.auto_naming,
@@ -220,6 +274,7 @@ impl GaladrielRuntime {
                     config_json.version,
                 );
 
+                // Apply the new configatron to the runtime.
                 self.configatron = configatron;
                 tracing::info!("Galadriel CSS configuration loaded and applied successfully.");
 
@@ -233,22 +288,18 @@ impl GaladrielRuntime {
         }
     }
 
+    /// Generates a log filename based on the current timestamp.
+    ///
+    /// This method creates a filename for log files by formatting the current local
+    /// time into a string that includes the year, month, day, hour, minute, and second.
+    ///
+    /// # Returns
+    /// Returns a string containing the generated log filename, such as `galadrielcss_log_2024-11-07_14-35-25.log`.
     fn generate_log_filename(&self) -> String {
+        // Get the current timestamp and format it as a string.
         let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
 
+        // Return the log filename using the formatted timestamp.
         format!("galadrielcss_log_{}.log", timestamp)
-    }
-
-    fn generate_log_subscriber(
-        &self,
-    ) -> FmtSubscriber<DefaultFields, Format, LevelFilter, NonBlocking> {
-        let file_name = self.generate_log_filename();
-        let file_appender = rolling::never("logs", file_name);
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-        FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
-            .with_writer(non_blocking)
-            .finish()
     }
 }

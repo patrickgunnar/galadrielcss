@@ -97,3 +97,93 @@ fn random_subheading_message() -> String {
 
     selected_message
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{configatron::Configatron, shellscape::app::ShellscapeApp};
+
+    fn get_configatron() -> Configatron {
+        Configatron::new(
+            vec![],
+            true,
+            true,
+            true,
+            "8080".to_string(),
+            "1.0.0".to_string(),
+        )
+    }
+
+    #[test]
+    fn test_shellscape_app_new() {
+        let mock_config = get_configatron();
+
+        let app = ShellscapeApp::new(
+            mock_config,
+            "1.0.0",
+            "MIT",
+            "Author Name",
+            "Footer Info",
+            "App Title",
+        );
+
+        assert_eq!(app.current_version, "1.0.0");
+        assert_eq!(app.license, "MIT");
+        assert_eq!(app.author, "Author Name");
+        assert_eq!(app.footer, "Footer Info");
+        assert_eq!(app.title, "App Title");
+    }
+
+    #[test]
+    fn test_shellscape_app_tick() {
+        let mock_config = get_configatron();
+        let app = ShellscapeApp::new(
+            mock_config,
+            "1.0.0",
+            "MIT",
+            "Author Name",
+            "Footer Info",
+            "App Title",
+        );
+
+        app.tick();
+    }
+
+    #[test]
+    fn test_shellscape_app_reset_galadriel_configs_state() {
+        let mock_config = get_configatron();
+        let new_config = get_configatron();
+        let mut app = ShellscapeApp::new(
+            mock_config.clone(),
+            "1.0.0",
+            "MIT",
+            "Author Name",
+            "Footer Info",
+            "App Title",
+        );
+
+        // Check initial configuration
+        assert_eq!(app.galadriel_configs, mock_config);
+
+        // Reset the configuration
+        app.reset_galadriel_configs_state(new_config.clone());
+
+        assert_eq!(app.galadriel_configs, new_config);
+    }
+
+    // Test for the `change_title` method
+    #[test]
+    fn test_shellscape_app_change_title() {
+        let mock_config = get_configatron();
+        let mut app = ShellscapeApp::new(
+            mock_config,
+            "1.0.0",
+            "MIT",
+            "Author Name",
+            "Footer Info",
+            "App Title",
+        );
+
+        app.change_title("New Title".to_string());
+        assert_eq!(app.title, "New Title");
+    }
+}

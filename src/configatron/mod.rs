@@ -146,7 +146,7 @@ impl Configatron {
     ///
     /// * `Vec<String>` - A clone of the `exclude` vector.
     pub fn get_exclude(&self) -> Vec<String> {
-        info!("Fetching exclude paths: {:?}", self.exclude);
+        // info!("Fetching exclude paths: {:?}", self.exclude);
 
         self.exclude.clone()
     }
@@ -157,7 +157,7 @@ impl Configatron {
     ///
     /// * `bool` - `true` if names are to be saved, otherwise `false`.
     pub fn get_auto_naming(&self) -> bool {
-        info!("Fetching auto naming status: {}", self.auto_naming);
+        // info!("Fetching auto naming status: {}", self.auto_naming);
 
         self.auto_naming
     }
@@ -168,7 +168,7 @@ impl Configatron {
     ///
     /// * `bool` - `true` if styles are to be reset, otherwise `false`.
     pub fn get_reset_styles(&self) -> bool {
-        info!("Fetching reset styles status: {}", self.reset_styles);
+        // info!("Fetching reset styles status: {}", self.reset_styles);
 
         self.reset_styles
     }
@@ -179,7 +179,7 @@ impl Configatron {
     ///
     /// * `bool` - `true` if styles are to be minified, otherwise `false`.
     pub fn get_minified_styles(&self) -> bool {
-        info!("Fetching minified styles status: {}", self.minified_styles);
+        // info!("Fetching minified styles status: {}", self.minified_styles);
 
         self.minified_styles
     }
@@ -190,7 +190,7 @@ impl Configatron {
     ///
     /// * `String` - A clone of the `port` value.
     pub fn get_port(&self) -> String {
-        info!("Fetching port: {}", self.port);
+        // info!("Fetching port: {}", self.port);
 
         self.port.clone()
     }
@@ -201,7 +201,7 @@ impl Configatron {
     ///
     /// * `String` - A clone of the `version` value.
     pub fn get_version(&self) -> String {
-        info!("Fetching version: {}", self.version);
+        // info!("Fetching version: {}", self.version);
 
         self.version.clone()
     }
