@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
+use baraddur::BaraddurObserver;
 use chrono::Local;
 use configatron::{Configatron, ConfigurationJson};
 use error::GaladrielError;
+use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
 use shellscape::{commands::ShellscapeCommands, Shellscape};
@@ -129,7 +131,10 @@ impl GaladrielRuntime {
         let _listener_handler = pipeline.create_pipeline(pipeline_listener);
         let mut _runtime_sender = pipeline.get_runtime_sender();
 
-        // TODO: Baraddur observer.
+        // Setting Barad-dûr observer.
+        let mut observer = BaraddurObserver::new();
+        let exclude_matcher = self.construct_exclude_matcher()?;
+        let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250);
 
         pipeline.register_server_port_in_temp(running_on_port)?;
         interface.invoke()?;
@@ -142,6 +147,28 @@ impl GaladrielRuntime {
             }
 
             tokio::select! {
+                // Receives events from the Lothlórien pipeline.
+                pipeline_res = pipeline.next() => {
+                    match pipeline_res {
+                        Ok(event) => {
+                            println!("{:?}", event);
+                        }
+                        Err(err) => {
+                            println!("{:?}", err);
+                        }
+                    }
+                }
+                // Receives events from the Baraddur observer.
+                baraddur_res = observer.next() => {
+                    match baraddur_res {
+                        Ok(event) => {
+                            println!("{:?}", event);
+                        }
+                        Err(err) => {
+                            println!("{:?}", err);
+                        }
+                    }
+                }
                 // Receives events from the shellscape/terminal interface.
                 shellscape_res = shellscape.next() => {
                     match shellscape_res {
@@ -157,17 +184,6 @@ impl GaladrielRuntime {
                         }
                     }
                 }
-                // Receives events from the Lothlórien pipeline.
-                pipeline_res = pipeline.next() => {
-                    match pipeline_res {
-                        Ok(event) => {
-                            println!("{:?}", event);
-                        }
-                        Err(err) => {
-                            println!("{:?}", err);
-                        }
-                    }
-                }
             }
         }
 
@@ -175,6 +191,16 @@ impl GaladrielRuntime {
         interface.abort()?;
 
         Ok(())
+    }
+
+    fn construct_exclude_matcher(&self) -> GaladrielResult<overrides::Override> {
+        let mut overrides = overrides::OverrideBuilder::new(self.working_dir.clone());
+
+        for exclude in self.configatron.get_exclude().iter() {
+            overrides.add(&format!("!/{}", exclude.trim_start_matches("/")))?;
+        }
+
+        Ok(overrides.build()?)
     }
 
     fn load_galadriel_config(&mut self) -> GaladrielResult<()> {

@@ -68,10 +68,7 @@ impl Shellscape {
         self.events_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Shellscape terminal event: Channel closed unexpectedly or an IO error occurred");
 
-            Box::<dyn std::error::Error>::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Error while receiving response from Shellscape sender: No response received.",
-            ))
+            Box::<dyn std::error::Error>::from("Error while receiving response from Shellscape sender: No response received.")
         })
     }
 

@@ -109,10 +109,7 @@ impl LothlorienPipeline {
         self.pipeline_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
 
-            Box::<dyn std::error::Error>::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Error while receiving response from Lothlórien pipeline sender: No response received.",
-            ))
+            Box::<dyn std::error::Error>::from("Error while receiving response from Lothlórien pipeline sender: No response received.")
         })
     }
 

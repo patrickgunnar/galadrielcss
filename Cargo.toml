@@ -18,6 +18,8 @@ futures = "0.3.31"
 walkdir = "2.5.0"
 ignore = "0.4.23"
 backtrace = "0.3.74"
+notify = "7.0.0"
+notify-debouncer-full = "0.4.0"
 
 tokio = { version = "1.41.0", features = ["full"] }
 tokio-tungstenite = { version = "0.24.0", features = ["native-tls"] }
