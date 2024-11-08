@@ -7,7 +7,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::{error, info};
 use ui::ShellscapeInterface;
 
-use crate::{configatron::Configatron, GaladrielResult};
+use crate::{configatron::Configatron, GaladrielCustomResult};
 
 mod app;
 pub mod commands;
@@ -44,8 +44,8 @@ impl Shellscape {
     /// Attempts to create a new terminal instance using the Crossterm library.
     ///
     /// # Returns
-    /// A `GaladrielResult` containing the terminal instance or an error if terminal creation fails.
-    fn get_terminal(&self) -> GaladrielResult<Terminal<CrosstermBackend<Stdout>>> {
+    /// A `GaladrielCustomResult` containing the terminal instance or an error if terminal creation fails.
+    fn get_terminal(&self) -> GaladrielCustomResult<Terminal<CrosstermBackend<Stdout>>> {
         info!("Attempting to create a new terminal instance.");
 
         // Initialize the backend for the terminal
@@ -62,10 +62,10 @@ impl Shellscape {
     /// Creates and returns a Shellscape interface, initializing a new terminal instance.
     ///
     /// # Returns
-    /// A `GaladrielResult` containing the created `ShellscapeInterface` instance.
+    /// A `GaladrielCustomResult` containing the created `ShellscapeInterface` instance.
     pub fn create_interface(
         &self,
-    ) -> GaladrielResult<ShellscapeInterface<CrosstermBackend<Stdout>>> {
+    ) -> GaladrielCustomResult<ShellscapeInterface<CrosstermBackend<Stdout>>> {
         info!("Creating Shellscape interface.");
 
         // Create a terminal and then return the interface
@@ -111,8 +111,8 @@ impl Shellscape {
     /// Awaits and returns the next terminal event from the Shellscape event receiver.
     ///
     /// # Returns
-    /// A `GaladrielResult` containing the next terminal event or an error if the channel is closed or an I/O error occurs.
-    pub async fn next(&mut self) -> GaladrielResult<ShellscapeTerminalEvents> {
+    /// A `GaladrielCustomResult` containing the next terminal event or an error if the channel is closed or an I/O error occurs.
+    pub async fn next(&mut self) -> GaladrielCustomResult<ShellscapeTerminalEvents> {
         //info!("Waiting for the next Shellscape terminal event.");
 
         // Wait for the next event from the receiver

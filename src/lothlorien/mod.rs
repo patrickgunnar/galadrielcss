@@ -13,7 +13,7 @@ use tokio_tungstenite::accept_async;
 use tracing::{error, info, warn};
 use tungstenite::Message;
 
-use crate::{GaladrielFuture, GaladrielResult};
+use crate::{GaladrielCustomResult, GaladrielFuture};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LothlorienEvents {}
@@ -77,7 +77,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result containing either the `TcpListener` instance or an error.
-    pub async fn create_listener(&self) -> GaladrielResult<TcpListener> {
+    pub async fn create_listener(&self) -> GaladrielCustomResult<TcpListener> {
         info!("Attempting to bind to socket address: {}", self.socket_addr);
 
         TcpListener::bind(self.socket_addr.clone())
@@ -156,7 +156,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result containing either the received event or an error.
-    pub async fn next(&mut self) -> GaladrielResult<LothlorienEvents> {
+    pub async fn next(&mut self) -> GaladrielCustomResult<LothlorienEvents> {
         self.pipeline_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
 
@@ -183,7 +183,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result indicating success or failure.
-    pub fn register_server_port_in_temp(&self, port: u16) -> GaladrielResult<()> {
+    pub fn register_server_port_in_temp(&self, port: u16) -> GaladrielCustomResult<()> {
         use std::io::Write;
 
         let systems_temp_file = self
@@ -206,7 +206,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result indicating success or failure.
-    pub fn remove_server_port_in_temp(&self) -> GaladrielResult<()> {
+    pub fn remove_server_port_in_temp(&self) -> GaladrielCustomResult<()> {
         let systems_temp_file = self
             .systems_temp_folder
             .join("galadrielcss_lothlorien_pipeline_port.txt");

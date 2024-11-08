@@ -7,7 +7,7 @@ use crossterm::{
 use ratatui::{prelude::Backend, Terminal};
 use tracing::{error, info, warn};
 
-use crate::GaladrielResult;
+use crate::GaladrielCustomResult;
 
 use super::{app::ShellscapeApp, widgets::ShellscapeWidgets};
 
@@ -42,7 +42,7 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if any terminal operations fail.
-    pub fn invoke(&mut self) -> GaladrielResult<()> {
+    pub fn invoke(&mut self) -> GaladrielCustomResult<()> {
         info!("Initializing Shellscape interface and enabling raw mode.");
 
         // Enable raw mode for terminal input
@@ -106,7 +106,7 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if rendering was successful, or an error if the terminal drawing failed.
-    pub fn render(&mut self, shellscape_app: &mut ShellscapeApp) -> GaladrielResult<()> {
+    pub fn render(&mut self, shellscape_app: &mut ShellscapeApp) -> GaladrielCustomResult<()> {
         //info!("Rendering Shellscape interface.");
 
         // Render the application widgets to the terminal
@@ -130,7 +130,7 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if the terminal reset was successful, or an error if any operation failed.
-    pub fn reset() -> GaladrielResult<()> {
+    pub fn reset() -> GaladrielCustomResult<()> {
         info!("Resetting terminal state to default.");
 
         // Disable raw mode
@@ -164,7 +164,7 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if the abortion process was successful, or an error if any operation failed.
-    pub fn abort(&mut self) -> GaladrielResult<()> {
+    pub fn abort(&mut self) -> GaladrielCustomResult<()> {
         warn!("Aborting Shellscape interface.");
 
         Self::reset()?;

@@ -11,7 +11,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-use crate::GaladrielResult;
+use crate::GaladrielCustomResult;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ObserverEvents {
@@ -54,11 +54,11 @@ impl BaraddurObserver {
     /// Awaits and retrieves the next event from the observer.
     ///
     /// # Returns
-    /// A `GaladrielResult` wrapping the next event (`ObserverEvents`).
+    /// A `GaladrielCustomResult` wrapping the next event (`ObserverEvents`).
     ///
     /// # Errors
     /// Returns an error if the channel is closed or an IO error occurs.
-    pub async fn next(&mut self) -> GaladrielResult<ObserverEvents> {
+    pub async fn next(&mut self) -> GaladrielCustomResult<ObserverEvents> {
         self.observer_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Barad-dûr observer event: Channel closed unexpectedly or an IO error occurred");
 
@@ -110,11 +110,11 @@ impl BaraddurObserver {
     /// * `from_millis`: The debounce interval in milliseconds.
     ///
     /// # Returns
-    /// A `GaladrielResult` wrapping a tuple of the debouncer and receiver.
+    /// A `GaladrielCustomResult` wrapping a tuple of the debouncer and receiver.
     fn async_debouncer(
         observer_sender: UnboundedSender<ObserverEvents>,
         from_millis: u64,
-    ) -> GaladrielResult<(
+    ) -> GaladrielCustomResult<(
         Debouncer<RecommendedWatcher, RecommendedCache>,
         mpsc::Receiver<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
     )> {
@@ -155,13 +155,13 @@ impl BaraddurObserver {
     /// * `from_millis`: The debounce interval in milliseconds.
     ///
     /// # Returns
-    /// A `GaladrielResult` wrapping the success or failure of the watch operation.
+    /// A `GaladrielCustomResult` wrapping the success or failure of the watch operation.
     async fn async_watch(
         matcher: overrides::Override,
         observer_sender: UnboundedSender<ObserverEvents>,
         working_dir: PathBuf,
         from_millis: u64,
-    ) -> GaladrielResult<()> {
+    ) -> GaladrielCustomResult<()> {
         let (mut debouncer, mut debouncer_receiver) =
             Self::async_debouncer(observer_sender.clone(), from_millis)?;
 

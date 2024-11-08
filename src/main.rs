@@ -1,6 +1,9 @@
 use std::env;
 
-use galadrielcss::{GaladrielResult, GaladrielRuntime, GaladrielRuntimeKind};
+use galadrielcss::{
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult, GaladrielRuntime, GaladrielRuntimeKind,
+};
 
 fn get_usage_message() -> String {
     "Usage:\n    galadrielcss <mode>\n\nAvailable modes:\n    'start'   - Launches the development server\n    'build'   - Compiles the project for production\n    'update'  - Updates Galadriel CSS to the latest version".to_string()
@@ -28,7 +31,13 @@ async fn main() -> GaladrielResult<()> {
             if runtime_kind == "start" || runtime_kind == "build" || runtime_kind == "update" =>
         {
             // Get the current working directory to use as the runtime base directory.
-            let current_dir = std::env::current_dir()?;
+            let current_dir = std::env::current_dir().map_err(|err| {
+                GaladrielError::raise_general_runtime_error(
+                    ErrorKind::CurrentWorkingDirRetrievalFailed,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
+            })?;
 
             // Determine runtime mode based on the argument received.
             let runtime_mode = if runtime_kind == "start" {
@@ -53,10 +62,11 @@ async fn main() -> GaladrielResult<()> {
             eprintln!();
             eprintln!("Please enter a valid mode and try again.");
 
-            Err(Box::<dyn std::error::Error>::from(format!(
-                "`{}` is not a valid Galadriel CSS mode.",
-                input
-            )))
+            Err(GaladrielError::raise_general_runtime_error(
+                ErrorKind::InvalidGaladrielModeError,
+                &format!("`{}` is not a valid Galadriel CSS mode.", input),
+                ErrorAction::Exit,
+            ))
         }
         None => {
             eprintln!("Error: No mode specified.");
@@ -65,8 +75,10 @@ async fn main() -> GaladrielResult<()> {
             eprintln!();
             eprintln!("Please specify one of the valid modes and try again.");
 
-            Err(Box::<dyn std::error::Error>::from(
+            Err(GaladrielError::raise_general_runtime_error(
+                ErrorKind::MissingGaladrielModeError,
                 "No mode specified. Please provide a valid mode ('start', 'build', or 'update').",
+                ErrorAction::Exit,
             ))
         }
     }

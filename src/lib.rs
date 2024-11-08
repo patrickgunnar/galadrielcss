@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use baraddur::BaraddurObserver;
 use chrono::Local;
 use configatron::{Configatron, ConfigurationJson};
-use error::GaladrielError;
+use error::{ErrorAction, ErrorKind, GaladrielError};
 use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
@@ -15,7 +15,7 @@ use tracing_subscriber::FmtSubscriber;
 mod asts;
 mod baraddur;
 mod configatron;
-mod error;
+pub mod error;
 mod kickstartor;
 mod lothlorien;
 mod shellscape;
@@ -27,8 +27,10 @@ pub enum GaladrielRuntimeKind {
     Update,
 }
 
-pub type GaladrielCustomResult<T> = Result<T, GaladrielError>;
-pub type GaladrielResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub type GaladrielResult<T> = Result<T, GaladrielError>;
+
+// To be removed.
+pub type GaladrielCustomResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub type GaladrielFuture<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -65,13 +67,12 @@ impl GaladrielRuntime {
     async fn start_development_mode(&mut self) -> GaladrielResult<()> {
         // ===================================================================================================================
         // Creates the development logs subscriber.
-        // ===================================================================================================================
-
         // Generates a subscriber for logging events to a file.
         //
         // This creates a log subscriber that writes logs to a file using the `tracing` library.
         // It sets up a rolling file appender with a log filename generated from `generate_log_filename`.
         // The subscriber is configured to log events with a severity level of `TRACE` or higher.
+        // ===================================================================================================================
         let file_name = self.generate_log_filename(); // Generate the log filename.
         let file_appender = rolling::never("logs", file_name); // Create a rolling file appender that writes logs to the specified file.
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender); // Set up non-blocking log writing.
@@ -86,21 +87,30 @@ impl GaladrielRuntime {
         tracing::subscriber::set_global_default(subscriber).map_err(|err| {
             tracing::error!("Failed to set log subscriber: {:?}", err.to_string());
 
-            Box::<dyn std::error::Error>::from(err.to_string())
+            GaladrielError::raise_general_runtime_error(
+                ErrorKind::TracingSubscriberInitializationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
-
-        // ===================================================================================================================
-        // END
-        // ===================================================================================================================
 
         tracing::info!("Log subscriber set successfully.");
 
-        // Load the galadriel configurations.
-        self.load_galadriel_config().map_err(|err| {
-            tracing::error!("Failed to load Galadriel configuration: {:?}", err);
+        // Configure the development runtime environment.
+        self.configure_development_environment().await
+    }
 
-            Box::<dyn std::error::Error>::from(err)
-        })?;
+    async fn start_build_mode(&mut self) -> GaladrielResult<()> {
+        self.load_galadriel_config()?;
+
+        println!("Build process not implemented yet.");
+
+        Ok(())
+    }
+
+    async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
+        // Load the galadriel configurations.
+        self.load_galadriel_config()?;
 
         tracing::info!("Galadriel CSS configuration loaded successfully.");
 
@@ -112,28 +122,22 @@ impl GaladrielRuntime {
         // TODO: Set an initial state for the UI.
         // TODO: Handle the initial parsing error.
         // Processing Nenyr files for initial setup.
-        kickstartor.process_nyr_files().await.map_err(|err| {
-            tracing::error!("Error processing Nenyr files: {:?}", err);
-
-            Box::<dyn std::error::Error>::from(err.to_string())
-        })?;
+        kickstartor.process_nyr_files().await?;
 
         tracing::info!("Nenyr files processed successfully. Initial styles AST set successfully.");
 
         // TODO: Pass the initial UI state for the dev runtime.
         // Transition to development runtime.
-        self.development_runtime().await
+        self.development_runtime().await.map_err(|err| {
+            GaladrielError::raise_general_runtime_error(
+                ErrorKind::Other,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })
     }
 
-    async fn start_build_mode(&mut self) -> GaladrielResult<()> {
-        self.load_galadriel_config()?;
-
-        println!("Build process not implemented yet.");
-
-        Ok(())
-    }
-
-    async fn development_runtime(&mut self) -> GaladrielResult<()> {
+    async fn development_runtime(&mut self) -> GaladrielCustomResult<()> {
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
@@ -150,7 +154,11 @@ impl GaladrielRuntime {
 
         // Initialize the Barad-dûr file system observer.
         let mut observer = BaraddurObserver::new();
-        let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
+        //let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
+
+        // Remove this later
+        let exclude_matcher = self.construct_exclude_matcher().unwrap();
+
         let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250); // Start observing file changes
 
         // Register the pipeline's server port in temporary storage.
@@ -230,7 +238,15 @@ impl GaladrielRuntime {
 
         // Iterate through the list of excludes from the configuration and add them to the matcher.
         for exclude in self.configatron.get_exclude().iter() {
-            overrides.add(&format!("!/{}", exclude.trim_start_matches("/")))?;
+            overrides
+                .add(&format!("!/{}", exclude.trim_start_matches("/")))
+                .map_err(|err| {
+                    GaladrielError::raise_general_other_error(
+                        ErrorKind::ExcludeMatcherCreationError,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    )
+                })?;
         }
 
         tracing::info!(
@@ -239,7 +255,13 @@ impl GaladrielRuntime {
         );
 
         // Return the built override object.
-        Ok(overrides.build()?)
+        overrides.build().map_err(|err| {
+            GaladrielError::raise_general_other_error(
+                ErrorKind::ExcludeMatcherBuildFailed,
+                &err.to_string(),
+                ErrorAction::Notify,
+            )
+        })
     }
 
     /// Loads the Galadriel CSS configuration from a JSON file.
@@ -257,35 +279,55 @@ impl GaladrielRuntime {
         // Define the path to the Galadriel configuration file.
         let config_path = self.working_dir.join("galadriel.config.json");
 
-        tracing::debug!("Loading Galadriel CSS configuration from {:?}", config_path);
+        if config_path.exists() {
+            tracing::debug!("Loading Galadriel CSS configuration from {:?}", config_path);
 
-        // Attempt to read the configuration file as a string.
-        match std::fs::read_to_string(config_path) {
-            Ok(raw_config) => {
-                // Deserialize the JSON string into the ConfigurationJson struct.
-                let config_json: ConfigurationJson = serde_json::from_str(&raw_config)?;
-                // Create a new Configatron instance with the deserialized data.
-                let configatron = Configatron::new(
-                    config_json.exclude,
-                    config_json.auto_naming,
-                    config_json.reset_styles,
-                    config_json.minified_styles,
-                    config_json.port,
-                    config_json.version,
-                );
+            // Attempt to read the configuration file as a string.
+            match std::fs::read_to_string(config_path) {
+                Ok(raw_config) => {
+                    // Deserialize the JSON string into the ConfigurationJson struct.
+                    let config_json: ConfigurationJson = serde_json::from_str(&raw_config)
+                        .map_err(|err| {
+                            GaladrielError::raise_general_other_error(
+                                ErrorKind::ConfigFileParsingError,
+                                &err.to_string(),
+                                ErrorAction::Notify,
+                            )
+                        })?;
 
-                // Apply the new configatron to the runtime.
-                self.configatron = configatron;
-                tracing::info!("Galadriel CSS configuration loaded and applied successfully.");
+                    // Create a new Configatron instance with the deserialized data.
+                    let configatron = Configatron::new(
+                        config_json.exclude,
+                        config_json.auto_naming,
+                        config_json.reset_styles,
+                        config_json.minified_styles,
+                        config_json.port,
+                        config_json.version,
+                    );
 
-                Ok(())
+                    // Apply the new configatron to the runtime.
+                    self.configatron = configatron;
+                    tracing::info!("Galadriel CSS configuration loaded and applied successfully.");
+                }
+                Err(err) => {
+                    tracing::error!("Failed to read Galadriel CSS configuration file: {:?}", err);
+
+                    return Err(GaladrielError::raise_general_other_error(
+                        ErrorKind::ConfigFileReadError,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    ));
+                }
             }
-            Err(err) => {
-                tracing::error!("Failed to read Galadriel CSS configuration file: {:?}", err);
+        } else {
+            // Create a new Configatron instance with the deserialized data.
+            self.configatron =
+                Configatron::new(vec![], true, true, true, "0".to_string(), "*".to_string());
 
-                Err(Box::<dyn std::error::Error>::from(err.to_string()))
-            }
+            tracing::warn!("Galadriel CSS is starting with default configurations as `galadriel.config.json` was not found in the root directory.");
         }
+
+        Ok(())
     }
 
     /// Generates a log filename based on the current timestamp.
