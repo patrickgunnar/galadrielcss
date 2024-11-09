@@ -7,11 +7,17 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::{error, info};
 use ui::ShellscapeInterface;
 
-use crate::{configatron::Configatron, GaladrielCustomResult};
+use crate::{
+    configatron::Configatron,
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult,
+};
 
 mod app;
 pub mod commands;
 mod events;
+pub mod notifications;
+mod metadata;
 mod ui;
 mod widgets;
 
@@ -44,8 +50,8 @@ impl Shellscape {
     /// Attempts to create a new terminal instance using the Crossterm library.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` containing the terminal instance or an error if terminal creation fails.
-    fn get_terminal(&self) -> GaladrielCustomResult<Terminal<CrosstermBackend<Stdout>>> {
+    /// A `GaladrielResult` containing the terminal instance or an error if terminal creation fails.
+    fn get_terminal(&self) -> GaladrielResult<Terminal<CrosstermBackend<Stdout>>> {
         info!("Attempting to create a new terminal instance.");
 
         // Initialize the backend for the terminal
@@ -55,17 +61,21 @@ impl Shellscape {
         Terminal::new(backend).map_err(|err| {
             error!("Failed to create terminal backend: {:?}", err);
 
-            Box::<dyn std::error::Error>::from(err)
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalInitializationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })
     }
 
     /// Creates and returns a Shellscape interface, initializing a new terminal instance.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` containing the created `ShellscapeInterface` instance.
+    /// A `GaladrielResult` containing the created `ShellscapeInterface` instance.
     pub fn create_interface(
         &self,
-    ) -> GaladrielCustomResult<ShellscapeInterface<CrosstermBackend<Stdout>>> {
+    ) -> GaladrielResult<ShellscapeInterface<CrosstermBackend<Stdout>>> {
         info!("Creating Shellscape interface.");
 
         // Create a terminal and then return the interface
@@ -82,14 +92,7 @@ impl Shellscape {
     pub fn create_app(&self, configs: Configatron) -> ShellscapeApp {
         info!("Creating Shellscape application instance with provided configurations.");
 
-        ShellscapeApp::new(
-            configs,
-            "1.0.0",
-            "Galadriel CSS and Nenyr License Agreement",
-            "Patrick Gunnar",
-            "© 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.",
-            "Galadriel CSS",
-        )
+        ShellscapeApp::new(configs, "1.0.0")
     }
 
     /// Creates and returns a Shellscape event handler with a specified tick rate.
@@ -111,15 +114,19 @@ impl Shellscape {
     /// Awaits and returns the next terminal event from the Shellscape event receiver.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` containing the next terminal event or an error if the channel is closed or an I/O error occurs.
-    pub async fn next(&mut self) -> GaladrielCustomResult<ShellscapeTerminalEvents> {
+    /// A `GaladrielResult` containing the next terminal event or an error if the channel is closed or an I/O error occurs.
+    pub async fn next(&mut self) -> GaladrielResult<ShellscapeTerminalEvents> {
         //info!("Waiting for the next Shellscape terminal event.");
 
         // Wait for the next event from the receiver
         self.events_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Shellscape terminal event: Channel closed unexpectedly or an IO error occurred");
 
-            Box::<dyn std::error::Error>::from("Error while receiving response from Shellscape sender: No response received.")
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalEventReceiveFailed,
+                "Error while receiving response from Shellscape sender: No response received.",
+                ErrorAction::Notify
+            )
         })
     }
 
@@ -180,7 +187,7 @@ mod tests {
         );
         let app = shellscape.create_app(configs.clone());
 
-        assert_eq!(app.galadriel_configs, configs);
+        assert_eq!(app.configs, configs);
     }
 
     #[tokio::test]

@@ -29,10 +29,6 @@ pub enum GaladrielRuntimeKind {
 
 pub type GaladrielResult<T> = Result<T, GaladrielError>;
 
-// To be removed.
-pub type GaladrielCustomResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-pub type GaladrielFuture<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
 #[derive(Clone, PartialEq, Debug)]
 pub struct GaladrielRuntime {
     runtime_mode: GaladrielRuntimeKind,
@@ -87,14 +83,12 @@ impl GaladrielRuntime {
         tracing::subscriber::set_global_default(subscriber).map_err(|err| {
             tracing::error!("Failed to set log subscriber: {:?}", err.to_string());
 
-            GaladrielError::raise_general_runtime_error(
+            GaladrielError::raise_critical_runtime_error(
                 ErrorKind::TracingSubscriberInitializationFailed,
                 &err.to_string(),
                 ErrorAction::Exit,
             )
         })?;
-
-        tracing::info!("Log subscriber set successfully.");
 
         // Configure the development runtime environment.
         self.configure_development_environment().await
@@ -112,8 +106,6 @@ impl GaladrielRuntime {
         // Load the galadriel configurations.
         self.load_galadriel_config()?;
 
-        tracing::info!("Galadriel CSS configuration loaded successfully.");
-
         let mut kickstartor = Kickstartor::new(
             self.configatron.get_exclude(),
             self.configatron.get_auto_naming(),
@@ -129,7 +121,7 @@ impl GaladrielRuntime {
         // TODO: Pass the initial UI state for the dev runtime.
         // Transition to development runtime.
         self.development_runtime().await.map_err(|err| {
-            GaladrielError::raise_general_runtime_error(
+            GaladrielError::raise_critical_runtime_error(
                 ErrorKind::Other,
                 &err.to_string(),
                 ErrorAction::Exit,
@@ -137,7 +129,7 @@ impl GaladrielRuntime {
         })
     }
 
-    async fn development_runtime(&mut self) -> GaladrielCustomResult<()> {
+    async fn development_runtime(&mut self) -> GaladrielResult<()> {
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
@@ -147,18 +139,23 @@ impl GaladrielRuntime {
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
-        let local_addr = pipeline_listener.local_addr()?; // Get local address for WebSocket server
+
+        // Get local address for WebSocket server
+        let local_addr = pipeline_listener.local_addr().map_err(|err| {
+            GaladrielError::raise_critical_runtime_error(
+                ErrorKind::ServerLocalAddrFetchFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })?;
+
         let running_on_port = local_addr.port(); // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
         let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
 
         // Initialize the Barad-dûr file system observer.
         let mut observer = BaraddurObserver::new();
-        //let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
-
-        // Remove this later
-        let exclude_matcher = self.construct_exclude_matcher().unwrap();
-
+        let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
         let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250); // Start observing file changes
 
         // Register the pipeline's server port in temporary storage.
@@ -174,11 +171,18 @@ impl GaladrielRuntime {
                 println!("{:?}", err);
             }
 
+            // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
+            // TODO: Make the notifications from the initial parsing be reflected in real time with the UI.
+
+            // TODO: Implement comprehensive error handling for potential issues here, designing a robust mechanism to manage different error types effectively.
+
             tokio::select! {
                 // Handle events from the Lothlórien pipeline.
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
                         Ok(event) => {
+                            // TODO: Receives the server_subheading and set it to the shellscape app.
+
                             println!("{:?}", event);
                         }
                         Err(err) => {
@@ -190,6 +194,8 @@ impl GaladrielRuntime {
                 baraddur_res = observer.next() => {
                     match baraddur_res {
                         Ok(event) => {
+                            // TODO: Receives the observer_subheading and set it to the shellscape app.
+
                             println!("{:?}", event);
                         }
                         Err(err) => {

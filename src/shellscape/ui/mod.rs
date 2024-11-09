@@ -7,7 +7,10 @@ use crossterm::{
 use ratatui::{prelude::Backend, Terminal};
 use tracing::{error, info, warn};
 
-use crate::GaladrielCustomResult;
+use crate::{
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult,
+};
 
 use super::{app::ShellscapeApp, widgets::ShellscapeWidgets};
 
@@ -42,14 +45,18 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if any terminal operations fail.
-    pub fn invoke(&mut self) -> GaladrielCustomResult<()> {
+    pub fn invoke(&mut self) -> GaladrielResult<()> {
         info!("Initializing Shellscape interface and enabling raw mode.");
 
         // Enable raw mode for terminal input
         terminal::enable_raw_mode().map_err(|err| {
             error!("Failed to enable raw mode: {:?}", err);
 
-            err
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalRawModeActivationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
 
         // Enter alternate screen and enable mouse capture
@@ -60,7 +67,11 @@ impl<B: Backend> ShellscapeInterface<B> {
                     err
                 );
 
-                err
+                GaladrielError::raise_general_interface_error(
+                    ErrorKind::EnterTerminalAltScreenMouseCaptureFailed,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
             },
         )?;
 
@@ -82,14 +93,22 @@ impl<B: Backend> ShellscapeInterface<B> {
         self.terminal.hide_cursor().map_err(|err| {
             error!("Failed to hide cursor: {:?}", err);
 
-            err
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalCursorHideFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
 
         // Clear the terminal screen
         self.terminal.clear().map_err(|err| {
             error!("Failed to clear the terminal: {:?}", err);
 
-            err
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalClearScreenFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
 
         info!("Shellscape interface successfully invoked.");
@@ -106,7 +125,7 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if rendering was successful, or an error if the terminal drawing failed.
-    pub fn render(&mut self, shellscape_app: &mut ShellscapeApp) -> GaladrielCustomResult<()> {
+    pub fn render(&mut self, shellscape_app: &mut ShellscapeApp) -> GaladrielResult<()> {
         //info!("Rendering Shellscape interface.");
 
         // Render the application widgets to the terminal
@@ -115,7 +134,11 @@ impl<B: Backend> ShellscapeInterface<B> {
             .map_err(|err| {
                 error!("Failed to render interface: {:?}", err);
 
-                err
+                GaladrielError::raise_critical_interface_error(
+                    ErrorKind::TerminalWidgetRenderingError,
+                    &err.to_string(),
+                    ErrorAction::Restart,
+                )
             })?;
 
         //info!("Shellscape interface rendered successfully.");
@@ -130,14 +153,18 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if the terminal reset was successful, or an error if any operation failed.
-    pub fn reset() -> GaladrielCustomResult<()> {
+    pub fn reset() -> GaladrielResult<()> {
         info!("Resetting terminal state to default.");
 
         // Disable raw mode
         terminal::disable_raw_mode().map_err(|err| {
             error!("Failed to disable raw mode: {:?}", err);
 
-            err
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalRawModeDeactivationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
 
         // Leave the alternate screen and disable mouse capture
@@ -148,7 +175,11 @@ impl<B: Backend> ShellscapeInterface<B> {
                     err
                 );
 
-                err
+                GaladrielError::raise_general_interface_error(
+                    ErrorKind::LeaveTerminalAltScreenMouseCaptureFailed,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
             },
         )?;
 
@@ -164,14 +195,18 @@ impl<B: Backend> ShellscapeInterface<B> {
     /// # Returns
     ///
     /// Returns `Ok(())` if the abortion process was successful, or an error if any operation failed.
-    pub fn abort(&mut self) -> GaladrielCustomResult<()> {
+    pub fn abort(&mut self) -> GaladrielResult<()> {
         warn!("Aborting Shellscape interface.");
 
         Self::reset()?;
         self.terminal.show_cursor().map_err(|err| {
             error!("Failed to show cursor during abort: {:?}", err);
 
-            err
+            GaladrielError::raise_general_interface_error(
+                ErrorKind::TerminalCursorUnhideFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
         })?;
 
         info!("Shellscape interface aborted and reset successfully.");
@@ -220,10 +255,6 @@ mod tests {
                 "1.0.0".to_string(),
             ),
             "1.0.0",
-            "Galadriel CSS and Nenyr License Agreement",
-            "Patrick Gunnar",
-            "© 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.",
-            "Galadriel CSS",
         );
 
         // Call render and check if it's successful

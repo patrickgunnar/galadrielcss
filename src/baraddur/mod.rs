@@ -11,7 +11,10 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-use crate::GaladrielCustomResult;
+use crate::{
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ObserverEvents {
@@ -54,15 +57,19 @@ impl BaraddurObserver {
     /// Awaits and retrieves the next event from the observer.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` wrapping the next event (`ObserverEvents`).
+    /// A `GaladrielResult` wrapping the next event (`ObserverEvents`).
     ///
     /// # Errors
     /// Returns an error if the channel is closed or an IO error occurs.
-    pub async fn next(&mut self) -> GaladrielCustomResult<ObserverEvents> {
+    pub async fn next(&mut self) -> GaladrielResult<ObserverEvents> {
         self.observer_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Barad-dûr observer event: Channel closed unexpectedly or an IO error occurred");
 
-            Box::<dyn std::error::Error>::from("Error while receiving response from Barad-dûr observer sender: No response received.")
+            GaladrielError::raise_general_observer_error(
+                ErrorKind::ObserverEventReceiveFailed,
+                "Error while receiving response from Barad-dûr observer sender: No response received.",
+                ErrorAction::Notify
+            )
         })
     }
 
@@ -110,11 +117,11 @@ impl BaraddurObserver {
     /// * `from_millis`: The debounce interval in milliseconds.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` wrapping a tuple of the debouncer and receiver.
+    /// A `GaladrielResult` wrapping a tuple of the debouncer and receiver.
     fn async_debouncer(
         observer_sender: UnboundedSender<ObserverEvents>,
         from_millis: u64,
-    ) -> GaladrielCustomResult<(
+    ) -> GaladrielResult<(
         Debouncer<RecommendedWatcher, RecommendedCache>,
         mpsc::Receiver<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
     )> {
@@ -136,6 +143,13 @@ impl BaraddurObserver {
                     }
                 }
             });
+        })
+        .map_err(|err| {
+            GaladrielError::raise_critical_observer_error(
+                ErrorKind::AsyncDebouncerCreationFailed,
+                &err.to_string(),
+                ErrorAction::Restart,
+            )
         })?;
 
         info!(
@@ -155,18 +169,26 @@ impl BaraddurObserver {
     /// * `from_millis`: The debounce interval in milliseconds.
     ///
     /// # Returns
-    /// A `GaladrielCustomResult` wrapping the success or failure of the watch operation.
+    /// A `GaladrielResult` wrapping the success or failure of the watch operation.
     async fn async_watch(
         matcher: overrides::Override,
         observer_sender: UnboundedSender<ObserverEvents>,
         working_dir: PathBuf,
         from_millis: u64,
-    ) -> GaladrielCustomResult<()> {
+    ) -> GaladrielResult<()> {
         let (mut debouncer, mut debouncer_receiver) =
             Self::async_debouncer(observer_sender.clone(), from_millis)?;
 
         info!("Starting to watch directory {:?}", working_dir);
-        observer_sender.send(ObserverEvents::StartingMessage(random_watch_message()))?;
+        observer_sender
+            .send(ObserverEvents::StartingMessage(random_watch_message()))
+            .map_err(|err| {
+                GaladrielError::raise_general_observer_error(
+                    ErrorKind::NotificationSendError,
+                    &err.to_string(),
+                    ErrorAction::Restart,
+                )
+            })?;
 
         // Set up the recursive watch on the directory
         debouncer
@@ -177,7 +199,11 @@ impl BaraddurObserver {
                     working_dir, err
                 );
 
-                err
+                GaladrielError::raise_critical_observer_error(
+                    ErrorKind::DebouncerWatchFailed,
+                    &err.to_string(),
+                    ErrorAction::Restart,
+                )
             })?;
 
         // Path to the Galadriel config file and initial processing state
@@ -185,7 +211,7 @@ impl BaraddurObserver {
         let mut processing_state = ProcessingState::Awaiting;
 
         // Spawn a task to handle the debounced events
-        let result = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = observer_sender.closed() => {
@@ -227,18 +253,18 @@ impl BaraddurObserver {
                 }
             }
         })
-        .await;
+        .await.map_err(|err| {
+            error!("Error completing async watch task: {:?}", err);
 
-        match result {
-            Ok(()) => {
-                info!("Async watch completed successfully.");
-                Ok(())
-            }
-            Err(err) => {
-                error!("Error completing async watch task: {:?}", err);
-                Err(Box::<dyn std::error::Error>::from(err.to_string()))
-            }
-        }
+            GaladrielError::raise_critical_observer_error(
+                ErrorKind::AsyncDebouncerWatchError,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })?;
+
+        info!("Async watch completed successfully.");
+        Ok(())
     }
 
     /// Processes buffered file system events by handling modifications and removals.

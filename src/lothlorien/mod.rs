@@ -13,7 +13,10 @@ use tokio_tungstenite::accept_async;
 use tracing::{error, info, warn};
 use tungstenite::Message;
 
-use crate::{GaladrielCustomResult, GaladrielFuture};
+use crate::{
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LothlorienEvents {}
@@ -77,7 +80,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result containing either the `TcpListener` instance or an error.
-    pub async fn create_listener(&self) -> GaladrielCustomResult<TcpListener> {
+    pub async fn create_listener(&self) -> GaladrielResult<TcpListener> {
         info!("Attempting to bind to socket address: {}", self.socket_addr);
 
         TcpListener::bind(self.socket_addr.clone())
@@ -88,7 +91,11 @@ impl LothlorienPipeline {
                     self.socket_addr, err
                 );
 
-                Box::<dyn std::error::Error>::from(err.to_string())
+                GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::SocketAddressBindingError,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
             })
     }
 
@@ -156,11 +163,15 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result containing either the received event or an error.
-    pub async fn next(&mut self) -> GaladrielCustomResult<LothlorienEvents> {
+    pub async fn next(&mut self) -> GaladrielResult<LothlorienEvents> {
         self.pipeline_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
 
-            Box::<dyn std::error::Error>::from("Error while receiving response from Lothlórien pipeline sender: No response received.")
+            GaladrielError::raise_general_pipeline_error(
+                ErrorKind::ServerEventReceiveFailed,
+                "Error while receiving response from Lothlórien pipeline sender: No response received.",
+                ErrorAction::Notify
+            )
         })
     }
 
@@ -183,20 +194,33 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result indicating success or failure.
-    pub fn register_server_port_in_temp(&self, port: u16) -> GaladrielCustomResult<()> {
+    pub fn register_server_port_in_temp(&self, port: u16) -> GaladrielResult<()> {
         use std::io::Write;
 
         let systems_temp_file = self
             .systems_temp_folder
             .join("galadrielcss_lothlorien_pipeline_port.txt");
-        let mut file = fs::File::create(&systems_temp_file)?;
+
+        let mut file = fs::File::create(&systems_temp_file).map_err(|err| {
+            GaladrielError::raise_general_pipeline_error(
+                ErrorKind::ServerPortRegistrationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })?;
 
         info!(
             "Registering server port {} in temporary file: {:?}",
             port, systems_temp_file
         );
 
-        write!(file, "{}", port)?;
+        write!(file, "{}", port).map_err(|err| {
+            GaladrielError::raise_general_pipeline_error(
+                ErrorKind::ServerPortWriteError,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })?;
 
         Ok(())
     }
@@ -206,7 +230,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result indicating success or failure.
-    pub fn remove_server_port_in_temp(&self) -> GaladrielCustomResult<()> {
+    pub fn remove_server_port_in_temp(&self) -> GaladrielResult<()> {
         let systems_temp_file = self
             .systems_temp_folder
             .join("galadrielcss_lothlorien_pipeline_port.txt");
@@ -216,7 +240,14 @@ impl LothlorienPipeline {
                 "Removing server port registration file: {:?}",
                 systems_temp_file
             );
-            fs::remove_file(systems_temp_file)?;
+
+            fs::remove_file(systems_temp_file).map_err(|err| {
+                GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::ServerPortRemovalFailed,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
+            })?;
         } else {
             warn!(
                 "Server port registration file does not exist: {:?}",
@@ -243,13 +274,32 @@ impl LothlorienPipeline {
         stream: tokio::net::TcpStream,
         pipeline_sender: UnboundedSender<LothlorienEvents>,
         runtime_sender: broadcast::Sender<ConnectedClientEvents>,
-    ) -> GaladrielFuture<()> {
-        let (mut stream_sender, mut stream_receiver) = accept_async(stream).await?.split();
-        let mut runtime_receiver = runtime_sender.subscribe();
+    ) -> GaladrielResult<()> {
+        let (mut stream_sender, mut stream_receiver) = accept_async(stream)
+            .await
+            .map_err(|err| {
+                GaladrielError::raise_critical_pipeline_error(
+                    ErrorKind::ServerSyncAcceptFailed,
+                    &err.to_string(),
+                    ErrorAction::Restart,
+                )
+            })?
+            .split();
 
-        let message = Message::Text("Galadriel CSS server is ready! 🚀\n\nYou can start styling your project with Galadriel CSS and see instant updates as changes are made.\n\nHappy coding, and may your styles be ever beautiful!".to_string());
+        let mut runtime_receiver = runtime_sender.subscribe();
+        let message = "Galadriel CSS server is ready! 🚀\n\nYou can start styling your project with Galadriel CSS and see instant updates as changes are made.\n\nHappy coding, and may your styles be ever beautiful!";
+
         info!("Sending initial connection message to client.");
-        stream_sender.send(message).await?;
+        stream_sender
+            .send(Message::Text(message.to_string()))
+            .await
+            .map_err(|err| {
+                GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::NotificationSendError,
+                    &format!("{}\nInitial Message Failed: {}", err.to_string(), message),
+                    ErrorAction::Notify,
+                )
+            })?;
 
         loop {
             tokio::select! {

@@ -469,6 +469,28 @@ pub enum ErrorKind {
     ConfigFileParsingError,
     ExcludeMatcherCreationError,
     ExcludeMatcherBuildFailed,
+    TerminalRawModeActivationFailed,
+    TerminalRawModeDeactivationFailed,
+    EnterTerminalAltScreenMouseCaptureFailed,
+    LeaveTerminalAltScreenMouseCaptureFailed,
+    TerminalCursorHideFailed,
+    TerminalCursorUnhideFailed,
+    TerminalClearScreenFailed,
+    TerminalWidgetRenderingError,
+    TerminalInitializationFailed,
+    TerminalEventReceiveFailed,
+    SocketAddressBindingError,
+    ServerEventReceiveFailed,
+    ServerPortRegistrationFailed,
+    ServerPortWriteError,
+    ServerPortRemovalFailed,
+    ServerLocalAddrFetchFailed,
+    NotificationSendError,
+    ServerSyncAcceptFailed,
+    ObserverEventReceiveFailed,
+    AsyncDebouncerCreationFailed,
+    DebouncerWatchFailed,
+    AsyncDebouncerWatchError,
     Other,
 }
 
@@ -596,7 +618,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", critical_error),
-            "(PipelineError/Other) - Critical error occurred"
+            "TYPE: PipelineError\nKIND: Other\nACTION: Restart\nMESSAGE: Critical error occurred"
         );
 
         let general_error = GaladrielError::raise_general_pipeline_error(
@@ -606,7 +628,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", general_error),
-            "(PipelineError/Other) - General error occurred"
+            "TYPE: PipelineError\nKIND: Other\nACTION: Notify\nMESSAGE: General error occurred"
         );
     }
 }

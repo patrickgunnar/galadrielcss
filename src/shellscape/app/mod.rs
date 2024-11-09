@@ -3,47 +3,33 @@ use tracing::{debug, info};
 
 use crate::configatron::Configatron;
 
+use super::{metadata::ShellscapeMetadata, notifications::ShellscapeNotifications};
+
 #[allow(dead_code)]
 #[derive(Clone, PartialEq, Debug)]
 pub struct ShellscapeApp {
-    pub subtitle: String,
-    pub subheading: String,
-    pub current_version: String,
-    pub license: String,
-    pub author: String,
-    pub footer: String,
-    pub title: String,
-    pub galadriel_configs: Configatron,
+    pub metadata: ShellscapeMetadata,
+    pub configs: Configatron,
+    pub notifications: Vec<ShellscapeNotifications>,
 }
 
 impl ShellscapeApp {
-    pub fn new(
-        galadriel_configs: Configatron,
-        current_version: &str,
-        license: &str,
-        author: &str,
-        footer: &str,
-        title: &str,
-    ) -> Self {
-        let subtitle = random_subtitle_message();
-        let subheading = random_subheading_message();
-
-        info!(
-            "Initializing ShellscapeApp with title: {}, version: {}",
-            title, current_version
+    pub fn new(configs: Configatron, version: &str) -> Self {
+        let metadata = ShellscapeMetadata::new(
+            "Galadriel CSS".to_string(),
+            random_subtitle_message(),
+            None,
+            None,
+            version.to_string(),
+            "Patrick Gunnar".to_string(),
+            "Galadriel CSS and Nenyr License Agreement".to_string(),
+            "© 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.".to_string(),
         );
-        debug!("ShellscapeApp initial subtitle: {}", subtitle);
-        debug!("ShellscapeApp initial subheading: {}", subheading);
 
         Self {
-            current_version: current_version.into(),
-            license: license.into(),
-            author: author.into(),
-            footer: footer.into(),
-            title: title.into(),
-            galadriel_configs,
-            subheading,
-            subtitle,
+            notifications: vec![],
+            configs,
+            metadata,
         }
     }
 
@@ -51,16 +37,35 @@ impl ShellscapeApp {
         info!("ShellscapeApp tick method called.");
     }
 
-    pub fn reset_galadriel_configs_state(&mut self, configs: Configatron) {
-        info!("Resetting Galadriel configurations in ShellscapeApp.");
-        debug!("Old configurations: {:?}", self.galadriel_configs);
-        debug!("New configurations: {:?}", configs);
+    pub fn add_notification(&mut self, notification: ShellscapeNotifications) {
+        info!("Adding Galadriel notification in ShellscapeApp.");
+        debug!("New notification: {:?}", notification);
 
-        self.galadriel_configs = configs;
+        self.notifications.push(notification);
     }
 
-    pub fn change_title(&mut self, title: String) {
-        self.title = title;
+    pub fn clear_notifications(&mut self) {
+        self.notifications.clear();
+    }
+
+    pub fn reset_configs_state(&mut self, configs: Configatron) {
+        info!("Resetting Galadriel configurations in ShellscapeApp.");
+        debug!("Old configurations: {:?}", self.configs);
+        debug!("New configurations: {:?}", configs);
+
+        self.configs = configs;
+    }
+
+    pub fn reset_subtitle(&mut self, subtitle: String) {
+        self.metadata.reset_subtitle(subtitle);
+    }
+
+    pub fn reset_server_heading(&mut self, heading: String) {
+        self.metadata.reset_server_heading(heading);
+    }
+
+    pub fn reset_observer_heading(&mut self, heading: String) {
+        self.metadata.reset_observer_heading(heading);
     }
 }
 
@@ -117,73 +122,38 @@ mod tests {
     fn test_shellscape_app_new() {
         let mock_config = get_configatron();
 
-        let app = ShellscapeApp::new(
-            mock_config,
-            "1.0.0",
-            "MIT",
-            "Author Name",
-            "Footer Info",
-            "App Title",
-        );
+        let app = ShellscapeApp::new(mock_config, "1.0.0");
 
-        assert_eq!(app.current_version, "1.0.0");
-        assert_eq!(app.license, "MIT");
-        assert_eq!(app.author, "Author Name");
-        assert_eq!(app.footer, "Footer Info");
-        assert_eq!(app.title, "App Title");
+        assert_eq!(app.metadata.title, "Galadriel CSS");
+        assert_eq!(app.metadata.author, "Patrick Gunnar");
+        assert_eq!(app.metadata.version, "1.0.0");
+        assert_eq!(
+            app.metadata.license,
+            "Galadriel CSS and Nenyr License Agreement"
+        );
+        assert_eq!(app.metadata.footer, "© 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.");
     }
 
     #[test]
     fn test_shellscape_app_tick() {
         let mock_config = get_configatron();
-        let app = ShellscapeApp::new(
-            mock_config,
-            "1.0.0",
-            "MIT",
-            "Author Name",
-            "Footer Info",
-            "App Title",
-        );
+        let app = ShellscapeApp::new(mock_config, "1.0.0");
 
         app.tick();
     }
 
     #[test]
-    fn test_shellscape_app_reset_galadriel_configs_state() {
+    fn test_shellscape_app_reset_configs_state() {
         let mock_config = get_configatron();
         let new_config = get_configatron();
-        let mut app = ShellscapeApp::new(
-            mock_config.clone(),
-            "1.0.0",
-            "MIT",
-            "Author Name",
-            "Footer Info",
-            "App Title",
-        );
+        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0");
 
         // Check initial configuration
-        assert_eq!(app.galadriel_configs, mock_config);
+        assert_eq!(app.configs, mock_config);
 
         // Reset the configuration
-        app.reset_galadriel_configs_state(new_config.clone());
+        app.reset_configs_state(new_config.clone());
 
-        assert_eq!(app.galadriel_configs, new_config);
-    }
-
-    // Test for the `change_title` method
-    #[test]
-    fn test_shellscape_app_change_title() {
-        let mock_config = get_configatron();
-        let mut app = ShellscapeApp::new(
-            mock_config,
-            "1.0.0",
-            "MIT",
-            "Author Name",
-            "Footer Info",
-            "App Title",
-        );
-
-        app.change_title("New Title".to_string());
-        assert_eq!(app.title, "New Title");
+        assert_eq!(app.configs, new_config);
     }
 }
