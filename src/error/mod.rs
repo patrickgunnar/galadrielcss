@@ -491,6 +491,12 @@ pub enum ErrorKind {
     AsyncDebouncerCreationFailed,
     DebouncerWatchFailed,
     AsyncDebouncerWatchError,
+    RequestTokenInvalid,
+    MissingRequestTokens,
+    UnsupportedRequestToken,
+    ClientResponseError,
+    ConnectionInitializationError,
+    ConnectionTerminationError,
     Other,
 }
 
