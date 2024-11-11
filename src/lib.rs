@@ -1,13 +1,17 @@
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use baraddur::BaraddurObserver;
-use chrono::Local;
+use baraddur::{events::ObserverEvents, BaraddurObserver};
+use chrono::{DateTime, Local};
 use configatron::{Configatron, ConfigurationJson};
 use error::{ErrorAction, ErrorKind, GaladrielError};
 use ignore::overrides;
 use kickstartor::Kickstartor;
-use lothlorien::LothlorienPipeline;
-use shellscape::{commands::ShellscapeCommands, Shellscape};
+use lothlorien::{events::LothlorienEvents, LothlorienPipeline};
+use shellscape::{
+    app::ShellscapeApp, commands::ShellscapeCommands, notifications::ShellscapeNotifications,
+    Shellscape,
+};
+use tokio::{net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -139,24 +143,15 @@ impl GaladrielRuntime {
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
-
-        // Get local address for WebSocket server
-        let local_addr = pipeline_listener.local_addr().map_err(|err| {
-            GaladrielError::raise_critical_runtime_error(
-                ErrorKind::ServerLocalAddrFetchFailed,
-                &err.to_string(),
-                ErrorAction::Exit,
-            )
-        })?;
-
-        let running_on_port = local_addr.port(); // Extract port from the listener's local address
+        let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
         let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
 
         // Initialize the Barad-dûr file system observer.
-        let mut observer = BaraddurObserver::new();
-        let exclude_matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
-        let _observer_handler = observer.start(exclude_matcher, self.working_dir.clone(), 250); // Start observing file changes
+        let mut observer = BaraddurObserver::new(self.working_dir.clone(), 250);
+        let matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
+        let atomically_matcher = Arc::new(RwLock::new(matcher));
+        let _observer_handler = observer.start(Arc::clone(&atomically_matcher)); // Start observing file changes
 
         // Register the pipeline's server port in temporary storage.
         pipeline.register_server_port_in_temp(running_on_port)?;
@@ -168,6 +163,8 @@ impl GaladrielRuntime {
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(&mut shellscape_app) {
+                // TODO: handle the error.
+
                 println!("{:?}", err);
             }
 
@@ -180,41 +177,79 @@ impl GaladrielRuntime {
                 // Handle events from the Lothlórien pipeline.
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
-                        Ok(event) => {
-                            // TODO: Receives the server_subheading and set it to the shellscape app.
+                        // Handle error events from the Lothlórien pipeline and notify the application.
+                        Ok(LothlorienEvents::Error(err)) => {
+                            shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
+                                Local::now(),
+                                err,
+                            ));
 
-                            println!("{:?}", event);
+                            // TODO: handle the error.
                         }
+                        // Handle other events from the Lothlórien pipeline by matching them to corresponding actions.
+                        Ok(event) => {
+                            self.match_server_events(event, &mut shellscape_app);
+                        }
+                        // Handle errors from the Lothlórien pipeline and notify the application.
                         Err(err) => {
-                            println!("{:?}", err);
+                            shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
+                                Local::now(),
+                                err,
+                            ));
+
+                            // TODO: handle the error.
                         }
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
                 baraddur_res = observer.next() => {
                     match baraddur_res {
-                        Ok(event) => {
-                            // TODO: Receives the observer_subheading and set it to the shellscape app.
+                        // Handle asynchronous debouncer errors from the observer and notify the application.
+                        Ok(ObserverEvents::AsyncDebouncerError(err)) => {
+                            shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
+                                Local::now(),
+                                err,
+                            ));
 
-                            println!("{:?}", event);
+                            // TODO: handle the error.
                         }
+                        // Handle other events from the Barad-dûr observer by matching them to corresponding actions.
+                        Ok(event) => {
+                            self.match_observer_events(
+                                Arc::clone(&atomically_matcher),
+                                &mut shellscape_app,
+                                event
+                            ).await;
+                        }
+                        // Handle errors from the Barad-dûr observer and notify the application.
                         Err(err) => {
-                            println!("{:?}", err);
+                            shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
+                                Local::now(),
+                                err,
+                            ));
+
+                            // TODO: handle the error.
                         }
                     }
                 }
                 // Handle events from the Shellscape terminal interface.
                 shellscape_res = shellscape.next() => {
                     match shellscape_res {
+                        // Handle a valid event from the Shellscape terminal interface.
                         Ok(event) => {
-                            let token = shellscape.match_shellscape_event(event);
-
-                            // Exit the loop if the terminate command is received.
-                            if token == ShellscapeCommands::Terminate {
-                                break;
+                            // Match the event to its corresponding Shellscape command.
+                            match shellscape.match_shellscape_event(event) {
+                                // Exit the loop if the terminate command is received.
+                                ShellscapeCommands::Terminate => {
+                                    break;
+                                }
+                                _ => {}
                             }
                         }
+                        // Handle errors that occur while processing the Shellscape event.
                         Err(err) => {
+                            // TODO: handle the error.
+
                             println!("{:?}", err);
                         }
                     }
@@ -227,6 +262,158 @@ impl GaladrielRuntime {
         interface.abort()?;
 
         Ok(())
+    }
+
+    /// Matches and handles events coming from the Lothlorien server, modifying the Shellscape application state accordingly.
+    ///
+    /// # Arguments
+    /// * `event` - The event from the Lothlorien server.
+    /// * `shellscape_app` - The application instance to update based on the event.
+    fn match_server_events(&mut self, event: LothlorienEvents, shellscape_app: &mut ShellscapeApp) {
+        match event {
+            // Updates the server heading in the app
+            LothlorienEvents::Header(heading) => {
+                shellscape_app.reset_server_heading(heading);
+            }
+            // Adds a notification to the app
+            LothlorienEvents::Notify(notification) => {
+                shellscape_app.add_notification(notification);
+            }
+            _ => {}
+        }
+    }
+
+    /// Matches and processes observer events asynchronously, updating the Shellscape application state accordingly.
+    ///
+    /// # Arguments
+    /// * `atomically_matcher` - A thread-safe matcher object for file filtering.
+    /// * `shellscape_app` - The application instance to update based on the observer events.
+    /// * `event` - The observer event to process.
+    async fn match_observer_events(
+        &mut self,
+        atomically_matcher: Arc<RwLock<overrides::Override>>,
+        shellscape_app: &mut ShellscapeApp,
+        event: ObserverEvents,
+    ) {
+        match event {
+            // Reloads Galadriel configuration settings and updates the application state
+            ObserverEvents::ReloadGaladrielConfigs => {
+                let start_time = Local::now();
+
+                match self.load_galadriel_config() {
+                    Ok(()) => {
+                        self.reconstruct_exclude_matcher(
+                            start_time,
+                            atomically_matcher,
+                            shellscape_app,
+                        )
+                        .await;
+
+                        let ending_time = Local::now();
+                        let duration = ending_time - start_time;
+                        let notification = ShellscapeNotifications::create_success(
+                            start_time,
+                            ending_time,
+                            duration,
+                            "Galadriel CSS configurations updated successfully. System is now operating with the latest configuration.",
+                        );
+
+                        shellscape_app.reset_configs_state(self.configatron.clone());
+                        shellscape_app.add_notification(notification);
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            "Unable to load Galadriel CSS configurations. Encountered error: {:?}",
+                            err
+                        );
+
+                        shellscape_app.add_notification(
+                            ShellscapeNotifications::create_galadriel_error(start_time, err),
+                        );
+                    }
+                }
+            }
+            // Adds a notification event to the app
+            ObserverEvents::Notification(notification) => {
+                shellscape_app.add_notification(notification);
+            }
+            // Updates the observer heading in the app
+            ObserverEvents::Header(heading) => {
+                shellscape_app.reset_observer_heading(heading);
+            }
+            _ => {}
+        }
+    }
+
+    /// Reconstructs the exclude matcher configuration asynchronously and updates the Shellscape app.
+    ///
+    /// # Arguments
+    /// * `start_time` - The time at which reconstruction started, for logging and notification purposes.
+    /// * `atomically_matcher` - A thread-safe matcher object to be updated with the new configuration.
+    /// * `shellscape_app` - The application instance to update based on the new matcher configuration.
+    async fn reconstruct_exclude_matcher(
+        &self,
+        start_time: DateTime<Local>,
+        atomically_matcher: Arc<RwLock<overrides::Override>>,
+        shellscape_app: &mut ShellscapeApp,
+    ) {
+        let mut matcher = atomically_matcher.write().await;
+
+        match self.construct_exclude_matcher() {
+            Ok(new_matcher) => {
+                tracing::info!("Successfully applied new exclude matcher configuration.");
+
+                *matcher = new_matcher;
+
+                let ending_time = Local::now();
+                let duration = ending_time - start_time;
+
+                ShellscapeNotifications::create_success(start_time, ending_time, duration, "");
+            }
+            Err(err) => {
+                tracing::error!(
+                    "Failed to apply new exclude matcher configuration: {:?}",
+                    err
+                );
+
+                shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
+                    start_time, err,
+                ));
+            }
+        }
+    }
+
+    /// Extracts the local address from a TCP listener, handling any errors encountered.
+    ///
+    /// # Arguments
+    /// * `listener` - The TCP listener instance to retrieve the address from.
+    ///
+    /// # Returns
+    /// * A `GaladrielResult` containing the extracted `SocketAddr` or an error if extraction failed.
+    fn extract_local_addr_from_listener(
+        &self,
+        listener: &TcpListener,
+    ) -> GaladrielResult<SocketAddr> {
+        listener.local_addr().map_err(|err| {
+            GaladrielError::raise_critical_runtime_error(
+                ErrorKind::ServerLocalAddrFetchFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })
+    }
+
+    /// Retrieves the port number from the local address of a TCP listener.
+    ///
+    /// # Arguments
+    /// * `listener` - The TCP listener instance to retrieve the port number from.
+    ///
+    /// # Returns
+    /// * A `GaladrielResult` containing the extracted port number or an error if extraction failed.
+    fn retrieve_port_from_local_addr(&self, listener: &TcpListener) -> GaladrielResult<u16> {
+        let local_addr = self.extract_local_addr_from_listener(listener)?;
+
+        Ok(local_addr.port())
     }
 
     /// Constructs an exclude matcher for filtering files or directories.

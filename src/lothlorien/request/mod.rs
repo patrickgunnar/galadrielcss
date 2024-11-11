@@ -32,6 +32,7 @@ pub enum Request {
     },
     /// Request to fetch the most updated CSS.
     FetchUpdatedCSS,
+    BreakConnection,
 }
 
 impl Request {

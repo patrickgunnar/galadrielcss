@@ -497,6 +497,8 @@ pub enum ErrorKind {
     ClientResponseError,
     ConnectionInitializationError,
     ConnectionTerminationError,
+    DebouncedEventError,
+    AsyncWatcherInitializationFailed,
     Other,
 }
 

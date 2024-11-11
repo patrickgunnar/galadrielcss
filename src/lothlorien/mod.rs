@@ -1,7 +1,9 @@
 use std::{env, fs, path::PathBuf};
 
-use events::{ConnectedClientEvents, LothlorienEvents};
+use chrono::Local;
+use events::{ClientResponse, ConnectedClientEvents, LothlorienEvents};
 use futures::{SinkExt, StreamExt};
+use rand::Rng;
 use request::{ContextType, Request, RequestType, ServerRequest};
 use tokio::{
     net::TcpListener,
@@ -17,6 +19,7 @@ use tungstenite::Message;
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
+    shellscape::notifications::ShellscapeNotifications,
     GaladrielResult,
 };
 
@@ -117,6 +120,11 @@ impl LothlorienPipeline {
         // Clone the pipeline and runtime senders to be used inside the spawned task
         let _sender = self.pipeline_sender.clone();
         let _runtime_sender = self.runtime_sender.clone();
+        let heading = random_server_subheading_message();
+
+        if let Err(err) = _sender.send(LothlorienEvents::Header(heading)) {
+            error!("Failed to send the server's header message to the main runtime. Error details: {:?}", err);
+        }
 
         info!("Starting pipeline listener. Awaiting client connections...");
 
@@ -151,6 +159,18 @@ impl LothlorienPipeline {
                                     // If the stream is handled successfully, log the success
                                     Ok(Ok(_)) => {
                                         info!("Connection handled successfully.");
+
+                                        let notification = ShellscapeNotifications::create_information(
+                                            Local::now(),
+                                            "Client has successfully disconnected from the Galadriel CSS server. No further events will be sent to this client."
+                                        );
+
+                                        if let Err(err) = _sender.send(LothlorienEvents::Notify(notification)) {
+                                            error!(
+                                                "Failed to send client disconnection notification to the main runtime. Error details: {:?}",
+                                                err
+                                            );
+                                        }
                                     }
                                     // If an error occurs while processing the connection, log the error
                                     Ok(Err(err)) => {
@@ -363,6 +383,18 @@ impl LothlorienPipeline {
                 )
             })?;
 
+        let notification = ShellscapeNotifications::create_information(
+            Local::now(),
+            "A new client has successfully connected to the Galadriel server and is now ready to request and receive events."
+        );
+
+        if let Err(err) = pipeline_sender.send(LothlorienEvents::Notify(notification)) {
+            error!(
+                "Failed to send client connection notification to main runtime. Error details: {:?}",
+                err
+            );
+        }
+
         loop {
             tokio::select! {
                 // If the pipeline sender is closed, the loop terminates gracefully.
@@ -374,97 +406,111 @@ impl LothlorienPipeline {
                 // Receives events from the runtime system.
                 _runtime_res = runtime_receiver.recv() => {}
                 // Receives events from the connected integration client.
-                client_res = stream_receiver.next() => {
-                    match client_res {
-                        // If no more data is received, the client has disconnected.
-                        None => {
-                            info!("Client has disconnected. Terminating stream synchronization.");
-
+                client_response = stream_receiver.next() => {
+                    match Self::handle_stream_response(&client_response, pipeline_sender.clone()) {
+                        ClientResponse::Break  => {
                             break;
                         }
-                        // If an error occurs while receiving the client's message, handle it.
-                        Some(Err(err)) => {
-                            error!(
-                                "Error receiving message from client: {:?}. Disconnecting client.",
-                                err
-                            );
+                        ClientResponse::Text(data) => {
+                            if let Err(err) = stream_sender.send(Message::Text(data)).await {
+                                let err = GaladrielError::raise_general_pipeline_error(
+                                    ErrorKind::NotificationSendError,
+                                    &err.to_string(),
+                                    ErrorAction::Notify
+                                );
 
-                            // Raises a general pipeline error and notifies the runtime of the error.
-                            let err = GaladrielError::raise_general_pipeline_error(
-                                ErrorKind::ClientResponseError,
-                                &err.to_string(),
-                                ErrorAction::Notify
-                            );
-
-                            if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
                                 error!(
-                                    "Failed to notify runtime of error: {:?}",
+                                    "Failed to send data to the connected client. Original error: {:?}",
                                     err
                                 );
-                            }
 
-                            break;
-                        }
-                        // Successfully received a message from the client.
-                        Some(Ok(event)) => {
-                            info!("Received event from client: {:?}", event);
+                                let notification = ShellscapeNotifications::create_galadriel_error(Local::now(), err);
 
-                            // Processes the received event and handles the associated request.
-                            match Self::process_response(event) {
-                                Ok(request) => {
-                                    // Handles the processed request and sends notifications to the runtime.
-                                    match Self::process_request(request) {
-                                        Ok(message) => {
-                                            info!("Successfully processed request: {:?}", message);
-
-                                            // Sends a success notification to the runtime.
-                                            if let Err(err) = pipeline_sender.send(LothlorienEvents::Notify(message)) {
-                                                error!(
-                                                    "Failed to send success notification to runtime: {:?}",
-                                                    err
-                                                );
-                                            }
-                                        }
-                                        // Handles errors during request processing.
-                                        Err(err) => {
-                                            error!(
-                                                "Error processing request: {:?}. Notifying runtime of error.",
-                                                err
-                                            );
-
-                                            // Sends an error notification to the runtime.
-                                            if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
-                                                error!(
-                                                    "Failed to notify runtime of request processing error: {:?}",
-                                                    err
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                                // Handles errors while processing the response.
-                                Err(err) => {
+                                if let Err(err) = pipeline_sender.send(LothlorienEvents::Notify(notification)) {
                                     error!(
-                                        "An error occurred while processing the client's request: {:?}",
+                                        "Failed to send error notification to the main runtime. Error: {:?}",
                                         err
                                     );
-
-                                    // Notifies the runtime of the error during request processing.
-                                    if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
-                                        error!(
-                                            "Failed to notify runtime of error during request processing: {:?}",
-                                            err
-                                        );
-                                    }
                                 }
                             }
                         }
+                        _ => {}
                     }
                 }
             }
         }
 
         Ok(())
+    }
+
+    fn handle_stream_response(
+        client_response: &Option<Result<Message, tungstenite::Error>>,
+        pipeline_sender: UnboundedSender<LothlorienEvents>,
+    ) -> ClientResponse {
+        match client_response {
+            // If no more data is received, the client has disconnected.
+            None => {
+                info!("Client has disconnected. Terminating stream synchronization.");
+
+                return ClientResponse::Break;
+            }
+            // If an error occurs while receiving the client's message, handle it.
+            Some(Err(err)) => {
+                error!(
+                    "Error receiving message from client: {:?}. Disconnecting client.",
+                    err
+                );
+
+                // Raises a general pipeline error and notifies the runtime of the error.
+                let err = GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::ClientResponseError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                );
+
+                if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
+                    error!("Failed to notify runtime of error: {:?}", err);
+                }
+
+                return ClientResponse::Break;
+            }
+            // Successfully received a message from the client.
+            Some(Ok(event)) => {
+                info!("Received event from client: {:?}", event);
+
+                // Processes the received event and handles the associated request.
+                match Self::process_response(event) {
+                    Ok(ServerRequest { request, .. }) if request == Request::BreakConnection => {
+                        return ClientResponse::Break;
+                    }
+                    Ok(request) => {
+                        // Handles the processed request and sends notifications to the runtime.
+                        let data = Self::process_request(request);
+
+                        info!("Successfully processed request: {:?}", data);
+
+                        return ClientResponse::Text(data);
+                    }
+                    // Handles errors while processing the response.
+                    Err(err) => {
+                        error!(
+                            "An error occurred while processing the client's request: {:?}",
+                            err
+                        );
+
+                        // Notifies the runtime of the error during request processing.
+                        if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
+                            error!(
+                                "Failed to notify runtime of error during request processing: {:?}",
+                                err
+                            );
+                        }
+
+                        return ClientResponse::Continue;
+                    }
+                }
+            }
+        }
     }
 
     /// Processes a `Message` event and extracts relevant tokens to create a `ServerRequest`.
@@ -475,62 +521,68 @@ impl LothlorienPipeline {
     ///
     /// # Returns
     /// A `GaladrielResult<ServerRequest>`. It returns an `Ok(ServerRequest)` if the message is valid, or an error if any issues occur during processing.
-    fn process_response(event: Message) -> GaladrielResult<ServerRequest> {
+    fn process_response(event: &Message) -> GaladrielResult<ServerRequest> {
         // Check if the message is of type `Message::Text`
-        if let Message::Text(response) = event {
-            // Split the response string by semicolon and collect into a vector of strings
-            let tokens: Vec<String> = response.split(";").map(|v| v.to_owned()).collect();
+        match event {
+            Message::Text(response) => {
+                // Split the response string by semicolon and collect into a vector of strings
+                let tokens: Vec<String> = response.split(";").map(|v| v.to_owned()).collect();
 
-            // Ensure there are at least two tokens: `request type` and `client name`
-            if tokens.len() < 2 {
-                error!("Invalid request format: Expected at least 2 tokens but received fewer. Tokens: {:?}", tokens);
+                // Ensure there are at least two tokens: `request type` and `client name`
+                if tokens.len() < 2 {
+                    error!("Invalid request format: Expected at least 2 tokens but received fewer. Tokens: {:?}", tokens);
 
-                // Return an error with detailed explanation if fewer than 2 tokens are provided
-                return Err(GaladrielError::raise_general_pipeline_error(
-                    ErrorKind::MissingRequestTokens,
-                    "Invalid request format: Expected at least 2 tokens but received fewer. Please provide both a `request type` and a `client name`, separated by a semicolon `;`. For example: `fetch-updated-css;Client Name`.",
-                    ErrorAction::Ignore,
-                ));
-            }
-
-            debug!("Processing request with tokens: {:?}", tokens);
-
-            // Extract the `request type` and `client name` from the tokens
-            let request_type = Self::get_request_type(&tokens[0])?;
-            let client_name = tokens[1].clone();
-
-            // Handle different types of requests based on the `request_type`
-            match request_type {
-                RequestType::FetchUpdatedCSS => {
-                    debug!("Request type: FetchUpdatedCSS");
-
-                    // Return a request to fetch updated CSS for the given client
-                    return Ok(ServerRequest::new(client_name, Request::FetchUpdatedCSS));
+                    // Return an error with detailed explanation if fewer than 2 tokens are provided
+                    return Err(GaladrielError::raise_general_pipeline_error(
+                        ErrorKind::MissingRequestTokens,
+                        "Invalid request format: Expected at least 2 tokens but received fewer. Please provide both a `request type` and a `client name`, separated by a semicolon `;`. For example: `fetch-updated-css;Client Name`.",
+                        ErrorAction::Ignore,
+                    ));
                 }
-                RequestType::CollectClassList => {
-                    // If the request type is `CollectClassList`, ensure there are at least 3 tokens
-                    if tokens.len() < 3 {
-                        error!("Collect class list request requires an additional token for class details. Tokens: {:?}", tokens);
 
-                        // Return an error if the class token is missing
-                        return Err(GaladrielError::raise_general_pipeline_error(
-                            ErrorKind::MissingRequestTokens,
-                            "Collect class list request requires an additional token for class details. Ensure at least 3 tokens are present.",
-                            ErrorAction::Ignore,
-                        ));
+                debug!("Processing request with tokens: {:?}", tokens);
+
+                // Extract the `request type` and `client name` from the tokens
+                let request_type = Self::get_request_type(&tokens[0])?;
+                let client_name = tokens[1].clone();
+
+                // Handle different types of requests based on the `request_type`
+                match request_type {
+                    RequestType::FetchUpdatedCSS => {
+                        debug!("Request type: FetchUpdatedCSS");
+
+                        // Return a request to fetch updated CSS for the given client
+                        return Ok(ServerRequest::new(client_name, Request::FetchUpdatedCSS));
                     }
+                    RequestType::CollectClassList => {
+                        // If the request type is `CollectClassList`, ensure there are at least 3 tokens
+                        if tokens.len() < 3 {
+                            error!("Collect class list request requires an additional token for class details. Tokens: {:?}", tokens);
 
-                    let class_token = tokens[2].clone();
+                            // Return an error if the class token is missing
+                            return Err(GaladrielError::raise_general_pipeline_error(
+                                ErrorKind::MissingRequestTokens,
+                                "Collect class list request requires an additional token for class details. Ensure at least 3 tokens are present.",
+                                ErrorAction::Ignore,
+                            ));
+                        }
 
-                    debug!(
-                        "Request type: CollectClassList with class token: {}",
-                        class_token
-                    );
+                        let class_token = tokens[2].clone();
 
-                    // Call a separate function to handle the class list request
-                    return Self::build_collect_class_list_request(class_token, client_name);
+                        debug!(
+                            "Request type: CollectClassList with class token: {}",
+                            class_token
+                        );
+
+                        // Call a separate function to handle the class list request
+                        return Self::build_collect_class_list_request(class_token, client_name);
+                    }
                 }
             }
+            Message::Close(_) => {
+                return Ok(ServerRequest::new("".to_string(), Request::BreakConnection));
+            }
+            _ => {}
         }
 
         error!("Unsupported message format received. Only `Message::Text` is supported for processing.");
@@ -709,7 +761,7 @@ impl LothlorienPipeline {
         }
     }
 
-    fn process_request(request: ServerRequest) -> GaladrielResult<String> {
+    fn process_request(request: ServerRequest) -> String {
         let _client_name = request.client_name;
 
         match request.request {
@@ -722,10 +774,28 @@ impl LothlorienPipeline {
                 // TODO: Implement a caching mechanism for the CSS, so that it is only updated when
                 // TODO: changes to the CSS AST occur, reducing unnecessary re-renders and improving performance.
             }
+            _ => {}
         }
 
-        Ok("".to_string())
+        "some-data".to_string()
     }
+}
+
+fn random_server_subheading_message() -> String {
+    let messages = [
+        "The light of Eärendil shines. Lothlórien is ready to begin your journey.",
+        "The stars of Lothlórien guide your path. The system is fully operational.",
+        "As the Mallorn trees bloom, Lothlórien is prepared for your commands.",
+        "The Mirror of Galadriel is clear—development is ready to proceed.",
+        "Lothlórien is fully operational and ready for development.",
+    ];
+
+    let idx = rand::thread_rng().gen_range(0..messages.len());
+    let selected_message = messages[idx].to_string();
+
+    debug!("Selected random subheading message: {}", selected_message);
+
+    selected_message
 }
 
 #[cfg(test)]
@@ -777,7 +847,7 @@ mod tests {
     #[test]
     fn test_process_response_valid_fetch_updated_css() {
         let message = Message::Text("fetch-updated-css;ClientA".to_string());
-        let result = LothlorienPipeline::process_response(message);
+        let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_ok());
 
@@ -794,7 +864,7 @@ mod tests {
     #[test]
     fn test_process_response_invalid_format_missing_token() {
         let message = Message::Text("fetch-updated-css".to_string());
-        let result = LothlorienPipeline::process_response(message);
+        let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_err());
 
@@ -807,7 +877,7 @@ mod tests {
     fn test_process_response_valid_collect_class_list() {
         let message =
             Message::Text("collect-class-list;ClientB;@module:context_name:class_name".to_string());
-        let result = LothlorienPipeline::process_response(message);
+        let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_ok());
 
@@ -832,7 +902,7 @@ mod tests {
     #[test]
     fn test_process_response_invalid_collect_class_list_format() {
         let message = Message::Text("collect-class-list;ClientC".to_string());
-        let result = LothlorienPipeline::process_response(message);
+        let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_err());
 

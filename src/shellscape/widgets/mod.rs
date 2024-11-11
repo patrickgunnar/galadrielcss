@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::app::ShellscapeApp;
+use super::{app::ShellscapeApp, notifications::ShellscapeNotifications};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ShellscapeWidgets {}
@@ -20,9 +20,9 @@ impl ShellscapeWidgets {
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
+                    Constraint::Percentage(20),
+                    Constraint::Length(3),
                     Constraint::Min(3),
-                    Constraint::Length(3),
-                    Constraint::Length(3),
                 ]
                 .as_ref(),
             )
@@ -96,5 +96,61 @@ impl ShellscapeWidgets {
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL).title("Footer"));
         frame.render_widget(footer, chunks[4]);
+
+        // Render Notifications
+        let notification_lines: Vec<Line> = shellscape_app
+            .notifications
+            .iter()
+            .map(|notification| match notification {
+                ShellscapeNotifications::Success {
+                    start_time,
+                    ending_time,
+                    duration,
+                    message,
+                } => Line::from(vec![
+                    Span::styled("Success: ", Style::default().fg(Color::Green)),
+                    Span::raw(format!(
+                        "[{} - {}] ({}): ",
+                        start_time, ending_time, duration
+                    )),
+                    Span::raw(message),
+                ]),
+                ShellscapeNotifications::Information {
+                    start_time,
+                    message,
+                } => Line::from(vec![
+                    Span::styled("Info: ", Style::default().fg(Color::Blue)),
+                    Span::raw(format!("[{}]: ", start_time)),
+                    Span::raw(message),
+                ]),
+                ShellscapeNotifications::Warning {
+                    start_time,
+                    message,
+                } => Line::from(vec![
+                    Span::styled("Warning: ", Style::default().fg(Color::Yellow)),
+                    Span::raw(format!("[{}]: ", start_time)),
+                    Span::raw(message),
+                ]),
+                ShellscapeNotifications::NenyrError { start_time, error } => Line::from(vec![
+                    Span::styled("Nenyr Error: ", Style::default().fg(Color::Red)),
+                    Span::raw(format!("[{}]: ", start_time)),
+                    Span::raw(format!("{:?}", error)),
+                ]),
+                ShellscapeNotifications::GaladrielError { start_time, error } => Line::from(vec![
+                    Span::styled("Galadriel Error: ", Style::default().fg(Color::Red)),
+                    Span::raw(format!("[{}]: ", start_time)),
+                    Span::raw(format!("{:?}", error)),
+                ]),
+            })
+            .collect();
+
+        let notifications = Paragraph::new(notification_lines)
+            .alignment(Alignment::Left)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Notifications"),
+            );
+        frame.render_widget(notifications, chunks[5]);
     }
 }

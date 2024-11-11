@@ -1,9 +1,17 @@
-use crate::error::GaladrielError;
+use crate::{error::GaladrielError, shellscape::notifications::ShellscapeNotifications};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LothlorienEvents {
-    Notify(String),
+    Header(String),
+    Notify(ShellscapeNotifications),
     Error(GaladrielError),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ClientResponse {
+    Text(String),
+    Continue,
+    Break,
 }
 
 #[derive(Clone, PartialEq, Debug)]

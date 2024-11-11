@@ -1,6 +1,7 @@
 /target
 /mocks
 /logs
+/luna
 
 galadriel.config.json
 layout.nyr

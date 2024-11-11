@@ -86,23 +86,6 @@ fn random_subtitle_message() -> String {
     selected_message
 }
 
-fn random_subheading_message() -> String {
-    let messages = [
-        "The light of Eärendil shines. Lothlórien is ready to begin your journey.",
-        "The stars of Lothlórien guide your path. The system is fully operational.",
-        "As the Mallorn trees bloom, Lothlórien is prepared for your commands.",
-        "The Mirror of Galadriel is clear—development is ready to proceed.",
-        "Lothlórien is fully operational and ready for development.",
-    ];
-
-    let idx = rand::thread_rng().gen_range(0..messages.len());
-    let selected_message = messages[idx].to_string();
-
-    debug!("Selected random subheading message: {}", selected_message);
-
-    selected_message
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{configatron::Configatron, shellscape::app::ShellscapeApp};
