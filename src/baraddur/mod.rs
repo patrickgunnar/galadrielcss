@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use chrono::Local;
-use events::{DebouncedWatch, ObserverEvents, ProcessingState};
+use events::{DebouncedWatch, ProcessingState};
 use ignore::overrides;
 use notify::{EventKind, RecommendedWatcher};
 use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, RecommendedCache};
@@ -18,6 +18,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
+    events::GaladrielEvents,
     shellscape::notifications::ShellscapeNotifications,
     GaladrielResult,
 };
@@ -32,9 +33,9 @@ pub mod events;
 #[derive(Debug)]
 pub struct BaraddurObserver {
     /// Sender for observer events, allowing for asynchronous event notification.
-    observer_sender: UnboundedSender<ObserverEvents>,
+    observer_sender: UnboundedSender<GaladrielEvents>,
     /// Receiver for observer events, used to await incoming events.
-    observer_receiver: UnboundedReceiver<ObserverEvents>,
+    observer_receiver: UnboundedReceiver<GaladrielEvents>,
 
     /// The directory path to monitor.
     working_dir: PathBuf,
@@ -67,11 +68,11 @@ impl BaraddurObserver {
     /// Awaits and retrieves the next event from the observer.
     ///
     /// # Returns
-    /// A `GaladrielResult` wrapping the next event (`ObserverEvents`).
+    /// A `GaladrielResult` wrapping the next event (`GaladrielEvents`).
     ///
     /// # Errors
     /// Returns an error if the channel is closed or if an IO error occurs.
-    pub async fn next(&mut self) -> GaladrielResult<ObserverEvents> {
+    pub async fn next(&mut self) -> GaladrielResult<GaladrielEvents> {
         self.observer_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Barad-dûr observer event: Channel closed unexpectedly or an IO error occurred");
 
@@ -113,7 +114,7 @@ impl BaraddurObserver {
 
                 error!("Failed to start async watch: {:?}", err);
 
-                if let Err(err) = observer_sender.send(ObserverEvents::AsyncDebouncerError(err)) {
+                if let Err(err) = observer_sender.send(GaladrielEvents::Error(err)) {
                     error!(
                         "Failed to send async debouncer error to main runtime: {:?}",
                         err
@@ -132,7 +133,7 @@ impl BaraddurObserver {
     /// # Returns
     /// A `GaladrielResult` wrapping a tuple containing the debouncer and receiver channels.
     fn async_debouncer(
-        observer_sender: UnboundedSender<ObserverEvents>,
+        observer_sender: UnboundedSender<GaladrielEvents>,
         from_millis: u64,
     ) -> GaladrielResult<(
         Debouncer<RecommendedWatcher, RecommendedCache>,
@@ -156,8 +157,7 @@ impl BaraddurObserver {
 
                     error!("Error sending response to debouncer channel: {:?}", err);
 
-                    if let Err(err) = observer_sender.send(ObserverEvents::AsyncDebouncerError(err))
-                    {
+                    if let Err(err) = observer_sender.send(GaladrielEvents::Error(err)) {
                         error!(
                             "Failed to send error notification to main runtime: {:?}",
                             err
@@ -194,7 +194,7 @@ impl BaraddurObserver {
     /// A `GaladrielResult` wrapping the success or failure of the watch operation.
     async fn async_watch(
         matcher: Arc<RwLock<overrides::Override>>,
-        observer_sender: UnboundedSender<ObserverEvents>,
+        observer_sender: UnboundedSender<GaladrielEvents>,
         working_dir: PathBuf,
         from_millis: u64,
     ) -> GaladrielResult<()> {
@@ -204,9 +204,20 @@ impl BaraddurObserver {
 
         info!("Starting to watch directory {:?}", working_dir);
 
+        let start_time = Local::now();
+        let ending_time = Local::now();
+        let duration = ending_time - start_time;
+
+        let notification = ShellscapeNotifications::create_success(
+            start_time,
+            ending_time,
+            duration,
+            &random_watch_message(),
+        );
+
         // Send a header event to observer sender as an initial notification
         observer_sender
-            .send(ObserverEvents::Header(random_watch_message()))
+            .send(GaladrielEvents::Notify(notification))
             .map_err(|err| {
                 GaladrielError::raise_general_observer_error(
                     ErrorKind::NotificationSendError,
@@ -289,7 +300,7 @@ impl BaraddurObserver {
     async fn match_debounced_result(
         debounced_result: Option<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
         matcher: Arc<RwLock<overrides::Override>>,
-        observer_sender: UnboundedSender<ObserverEvents>,
+        observer_sender: UnboundedSender<GaladrielEvents>,
         processing_state: &mut ProcessingState,
         config_path: &PathBuf,
     ) -> DebouncedWatch {
@@ -339,7 +350,7 @@ impl BaraddurObserver {
 
                 error!("Error in debounced events receiver: {:?}", err);
 
-                if let Err(err) = observer_sender.send(ObserverEvents::AsyncDebouncerError(err)) {
+                if let Err(err) = observer_sender.send(GaladrielEvents::Error(err)) {
                     error!("Failed to send debouncer error to main runtime: {:?}", err);
                 }
 
@@ -360,7 +371,7 @@ impl BaraddurObserver {
     /// * `config_path`: The path to the config file.
     /// * `path`: The path of the file or directory involved in the event.
     async fn handle_current_event(
-        observer_sender: UnboundedSender<ObserverEvents>,
+        observer_sender: UnboundedSender<GaladrielEvents>,
         processing_state: &mut ProcessingState,
         config_path: &PathBuf,
         path: &PathBuf,
@@ -378,7 +389,8 @@ impl BaraddurObserver {
                 path if path == config_path => {
                     info!("Configuration file modified: {:?}", config_path);
 
-                    if let Err(err) = observer_sender.send(ObserverEvents::ReloadGaladrielConfigs) {
+                    if let Err(err) = observer_sender.send(GaladrielEvents::ReloadGaladrielConfigs)
+                    {
                         error!(
                             "Error notifying main runtime to reload configurations: {:?}",
                             err
@@ -400,14 +412,14 @@ impl BaraddurObserver {
         }
     }
 
-    async fn process_nenyr_file(observer_sender: UnboundedSender<ObserverEvents>, path: &PathBuf) {
+    async fn process_nenyr_file(observer_sender: UnboundedSender<GaladrielEvents>, path: &PathBuf) {
         let start_time = Local::now();
         let notification = ShellscapeNotifications::create_information(
             start_time,
-            &format!("Initiating parsing of: {}", path.to_string_lossy()),
+            &format!("Initiating parsing of: {:?}", path.to_string_lossy()),
         );
 
-        if let Err(err) = observer_sender.send(ObserverEvents::Notification(notification)) {
+        if let Err(err) = observer_sender.send(GaladrielEvents::Notify(notification)) {
             error!(
                 "Unable to notify runtime: parsing event for {:?} failed. Error: {:?}",
                 path, err
@@ -428,7 +440,7 @@ impl BaraddurObserver {
             ),
         );
 
-        if let Err(err) = observer_sender.send(ObserverEvents::Notification(notification)) {
+        if let Err(err) = observer_sender.send(GaladrielEvents::Notify(notification)) {
             error!(
                 "Failed to notify main runtime of parse completion for {:?}. Error: {:?}",
                 path, err
@@ -459,9 +471,12 @@ fn random_watch_message() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{BaraddurObserver, ObserverEvents};
+    use crate::shellscape::notifications::ShellscapeNotifications;
+
+    use super::{BaraddurObserver, GaladrielEvents};
     use std::{path::PathBuf, sync::Arc};
 
+    use chrono::Local;
     use ignore::overrides;
     use tokio::sync::RwLock;
 
@@ -477,9 +492,11 @@ mod tests {
     async fn test_next_receives_event() {
         let mut observer = BaraddurObserver::new(PathBuf::from("."), 250);
         let sender = observer.observer_sender.clone();
+        let notification =
+            ShellscapeNotifications::create_information(Local::now(), "Test message");
 
         // Send an event from the sender side.
-        let expected_event = ObserverEvents::Header("Testing event".to_string());
+        let expected_event = GaladrielEvents::Notify(notification);
         sender.send(expected_event.clone()).unwrap();
 
         // Use the `next()` method to receive the event.
@@ -501,7 +518,7 @@ mod tests {
 
         // Receive the initial starting message.
         let result = observer.next().await;
-        assert!(matches!(result, Ok(ObserverEvents::Header(_))));
+        assert!(matches!(result, Ok(GaladrielEvents::Notify(_))));
     }
 
     #[tokio::test]
@@ -509,7 +526,7 @@ mod tests {
         let matcher = overrides::OverrideBuilder::new(".").build().unwrap();
         // Simulate a scenario where sending the observer event fails
         let matcher = Arc::new(RwLock::new(matcher));
-        let (sender, _) = tokio::sync::mpsc::unbounded_channel::<ObserverEvents>(); // Will not be used
+        let (sender, _) = tokio::sync::mpsc::unbounded_channel::<GaladrielEvents>(); // Will not be used
         let working_dir = PathBuf::from(".");
         let debounce_interval = 100u64;
 

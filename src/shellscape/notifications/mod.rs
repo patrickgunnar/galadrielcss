@@ -3,6 +3,7 @@ use nenyr::error::NenyrError;
 
 use crate::error::GaladrielError;
 
+#[allow(dead_code)]
 #[derive(Clone, PartialEq, Debug)]
 pub enum ShellscapeNotifications {
     Success {
@@ -29,6 +30,7 @@ pub enum ShellscapeNotifications {
     },
 }
 
+#[allow(dead_code)]
 impl ShellscapeNotifications {
     pub fn create_success(
         start_time: DateTime<Local>,

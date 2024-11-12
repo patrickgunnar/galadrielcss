@@ -1,4 +1,7 @@
+use std::ops::Add;
+
 use rand::Rng;
+use ratatui::widgets::ScrollbarState;
 use tracing::{debug, info};
 
 use crate::configatron::Configatron;
@@ -11,22 +14,25 @@ pub struct ShellscapeApp {
     pub metadata: ShellscapeMetadata,
     pub configs: Configatron,
     pub notifications: Vec<ShellscapeNotifications>,
+    pub notifications_offset: (u16, u16),
+    pub notification_scroll_vertical: ScrollbarState,
 }
 
+#[allow(dead_code)]
 impl ShellscapeApp {
     pub fn new(configs: Configatron, version: &str) -> Self {
         let metadata = ShellscapeMetadata::new(
             "Galadriel CSS".to_string(),
             random_subtitle_message(),
-            None,
-            None,
             version.to_string(),
             "Patrick Gunnar".to_string(),
             "Galadriel CSS and Nenyr License Agreement".to_string(),
-            "© 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.".to_string(),
+            "\u{00A9} 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.".to_string(),
         );
 
         Self {
+            notification_scroll_vertical: ScrollbarState::new(0),
+            notifications_offset: (0, 0),
             notifications: vec![],
             configs,
             metadata,
@@ -41,7 +47,7 @@ impl ShellscapeApp {
         info!("Adding Galadriel notification in ShellscapeApp.");
         debug!("New notification: {:?}", notification);
 
-        self.notifications.push(notification);
+        self.notifications.insert(0, notification);
     }
 
     pub fn clear_notifications(&mut self) {
@@ -60,12 +66,16 @@ impl ShellscapeApp {
         self.metadata.reset_subtitle(subtitle);
     }
 
-    pub fn reset_server_heading(&mut self, heading: String) {
-        self.metadata.reset_server_heading(heading);
+    pub fn reset_scroll_up(&mut self) {
+        let (y, _) = self.notifications_offset;
+
+        self.notifications_offset = (y.add(1), 0);
     }
 
-    pub fn reset_observer_heading(&mut self, heading: String) {
-        self.metadata.reset_observer_heading(heading);
+    pub fn reset_scroll_down(&mut self) {
+        let (y, _) = self.notifications_offset;
+
+        self.notifications_offset = (y.saturating_sub(1), 0);
     }
 }
 

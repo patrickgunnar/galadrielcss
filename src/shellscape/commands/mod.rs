@@ -8,6 +8,8 @@ pub enum ShellscapeCommands {
     Terminate,
     /// No operation or command.
     None,
+    ScrollUp,
+    ScrollDown,
 }
 
 impl ShellscapeCommands {
@@ -36,6 +38,10 @@ impl ShellscapeCommands {
             KeyCode::Char('c') | KeyCode::Char('C') if event.modifiers == KeyModifiers::CONTROL => {
                 info!("Received termination command via `Ctrl+C`");
                 ShellscapeCommands::Terminate
+            }
+            KeyCode::Up if event.modifiers == KeyModifiers::CONTROL => ShellscapeCommands::ScrollUp,
+            KeyCode::Down if event.modifiers == KeyModifiers::CONTROL => {
+                ShellscapeCommands::ScrollDown
             }
             _ => ShellscapeCommands::None,
         }

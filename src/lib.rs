@@ -1,12 +1,14 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use baraddur::{events::ObserverEvents, BaraddurObserver};
+use baraddur::BaraddurObserver;
 use chrono::{DateTime, Local};
 use configatron::{Configatron, ConfigurationJson};
 use error::{ErrorAction, ErrorKind, GaladrielError};
+use events::GaladrielEvents;
 use ignore::overrides;
 use kickstartor::Kickstartor;
-use lothlorien::{events::LothlorienEvents, LothlorienPipeline};
+use lothlorien::LothlorienPipeline;
+use nenyr::error::{NenyrError, NenyrErrorTracing};
 use shellscape::{
     app::ShellscapeApp, commands::ShellscapeCommands, notifications::ShellscapeNotifications,
     Shellscape,
@@ -20,6 +22,7 @@ mod asts;
 mod baraddur;
 mod configatron;
 pub mod error;
+mod events;
 mod kickstartor;
 mod lothlorien;
 mod shellscape;
@@ -160,6 +163,20 @@ impl GaladrielRuntime {
 
         tracing::info!("Galadriel CSS development runtime initiated.");
 
+        // TEST AREA
+        let notification = ShellscapeNotifications::create_warning(
+            Local::now(),
+            "Please double-check your code for potential issues before proceeding. Ensure all dependencies are up to date and the build is clean."
+        );
+
+        shellscape_app.add_notification(notification);
+
+        let err = NenyrError { suggestion: Some("Ensure that the `myTestingClass` class or deriving name declaration is followed by an opening curly bracket `{` to properly define the class block. The correct syntax is: `Declare Class('myTestingClass') { ... }` or `Declare Class('myTestingClass') Deriving('layoutName') { ... }`.".to_string()), context_name: Some("Central".to_string()), context_path: "examples/nenyr/central.nyr".to_string(), error_message: "An opening curly bracket `{` was expected after the `myTestingClass` class or deriving name declaration to start the class block, but it was not found. Unfortunately, instead of the expected value, we received the following: `Stylesheet`.".to_string(), error_kind: nenyr::error::NenyrErrorKind::SyntaxError, error_tracing: NenyrErrorTracing { line_before: Some("    Declare Class(\"myTestingClass\") ".to_string()), line_after: Some("            backgroundColor: \"blue\",".to_string()), error_line: Some("        Stylesheet({".to_string()), error_on_line: 158, error_on_col: 19, error_on_pos: 5070 } };
+        let notification = ShellscapeNotifications::create_nenyr_error(Local::now(), err);
+
+        shellscape_app.add_notification(notification);
+        // TEST AREA
+
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(&mut shellscape_app) {
@@ -178,7 +195,7 @@ impl GaladrielRuntime {
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
                         // Handle error events from the Lothlórien pipeline and notify the application.
-                        Ok(LothlorienEvents::Error(err)) => {
+                        Ok(GaladrielEvents::Error(err)) => {
                             shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
                                 Local::now(),
                                 err,
@@ -186,9 +203,9 @@ impl GaladrielRuntime {
 
                             // TODO: handle the error.
                         }
-                        // Handle other events from the Lothlórien pipeline by matching them to corresponding actions.
-                        Ok(event) => {
-                            self.match_server_events(event, &mut shellscape_app);
+                        // Handle notification event from the Lothlórien pipeline.
+                        Ok(GaladrielEvents::Notify(notification)) => {
+                            shellscape_app.add_notification(notification);
                         }
                         // Handle errors from the Lothlórien pipeline and notify the application.
                         Err(err) => {
@@ -199,13 +216,14 @@ impl GaladrielRuntime {
 
                             // TODO: handle the error.
                         }
+                        _ => {}
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
                 baraddur_res = observer.next() => {
                     match baraddur_res {
                         // Handle asynchronous debouncer errors from the observer and notify the application.
-                        Ok(ObserverEvents::AsyncDebouncerError(err)) => {
+                        Ok(GaladrielEvents::Error(err)) => {
                             shellscape_app.add_notification(ShellscapeNotifications::create_galadriel_error(
                                 Local::now(),
                                 err,
@@ -216,9 +234,9 @@ impl GaladrielRuntime {
                         // Handle other events from the Barad-dûr observer by matching them to corresponding actions.
                         Ok(event) => {
                             self.match_observer_events(
-                                Arc::clone(&atomically_matcher),
+                                event,
                                 &mut shellscape_app,
-                                event
+                                Arc::clone(&atomically_matcher),
                             ).await;
                         }
                         // Handle errors from the Barad-dûr observer and notify the application.
@@ -243,6 +261,12 @@ impl GaladrielRuntime {
                                 ShellscapeCommands::Terminate => {
                                     break;
                                 }
+                                ShellscapeCommands::ScrollUp => {
+                                    shellscape_app.reset_scroll_down();
+                                }
+                                ShellscapeCommands::ScrollDown => {
+                                    shellscape_app.reset_scroll_up();
+                                }
                                 _ => {}
                             }
                         }
@@ -264,44 +288,32 @@ impl GaladrielRuntime {
         Ok(())
     }
 
-    /// Matches and handles events coming from the Lothlorien server, modifying the Shellscape application state accordingly.
+    /// Asynchronously handles incoming observer events and updates the Shellscape app
+    /// based on the received `GaladrielEvents`.
     ///
-    /// # Arguments
-    /// * `event` - The event from the Lothlorien server.
-    /// * `shellscape_app` - The application instance to update based on the event.
-    fn match_server_events(&mut self, event: LothlorienEvents, shellscape_app: &mut ShellscapeApp) {
-        match event {
-            // Updates the server heading in the app
-            LothlorienEvents::Header(heading) => {
-                shellscape_app.reset_server_heading(heading);
-            }
-            // Adds a notification to the app
-            LothlorienEvents::Notify(notification) => {
-                shellscape_app.add_notification(notification);
-            }
-            _ => {}
-        }
-    }
-
-    /// Matches and processes observer events asynchronously, updating the Shellscape application state accordingly.
-    ///
-    /// # Arguments
-    /// * `atomically_matcher` - A thread-safe matcher object for file filtering.
-    /// * `shellscape_app` - The application instance to update based on the observer events.
-    /// * `event` - The observer event to process.
+    /// # Parameters
+    /// - `event`: The observer event (`GaladrielEvents`) to process.
+    /// - `shellscape_app`: A mutable reference to the Shellscape app for updating UI states and notifications.
+    /// - `atomically_matcher`: A thread-safe reference-counted handle to manage configuration overrides.
     async fn match_observer_events(
         &mut self,
-        atomically_matcher: Arc<RwLock<overrides::Override>>,
+        event: GaladrielEvents,
         shellscape_app: &mut ShellscapeApp,
-        event: ObserverEvents,
+        atomically_matcher: Arc<RwLock<overrides::Override>>,
     ) {
         match event {
-            // Reloads Galadriel configuration settings and updates the application state
-            ObserverEvents::ReloadGaladrielConfigs => {
+            // If a notification event is received, add it directly to the Shellscape app.
+            GaladrielEvents::Notify(notification) => {
+                shellscape_app.add_notification(notification);
+            }
+            // Handle reloading of Galadriel configuration when requested by the event.
+            GaladrielEvents::ReloadGaladrielConfigs => {
                 let start_time = Local::now();
 
+                // Attempt to load the latest Galadriel configuration.
                 match self.load_galadriel_config() {
                     Ok(()) => {
+                        // If successful, reconstruct the exclude matcher asynchronously.
                         self.reconstruct_exclude_matcher(
                             start_time,
                             atomically_matcher,
@@ -318,9 +330,11 @@ impl GaladrielRuntime {
                             "Galadriel CSS configurations updated successfully. System is now operating with the latest configuration.",
                         );
 
+                        // Update the Shellscape app's state with the new configuration and add a success notification.
                         shellscape_app.reset_configs_state(self.configatron.clone());
                         shellscape_app.add_notification(notification);
                     }
+                    // Log an error if configuration loading fails, and notify the Shellscape app.
                     Err(err) => {
                         tracing::error!(
                             "Unable to load Galadriel CSS configurations. Encountered error: {:?}",
@@ -332,14 +346,6 @@ impl GaladrielRuntime {
                         );
                     }
                 }
-            }
-            // Adds a notification event to the app
-            ObserverEvents::Notification(notification) => {
-                shellscape_app.add_notification(notification);
-            }
-            // Updates the observer heading in the app
-            ObserverEvents::Header(heading) => {
-                shellscape_app.reset_observer_heading(heading);
             }
             _ => {}
         }

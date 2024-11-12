@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
 use chrono::Local;
-use events::{ClientResponse, ConnectedClientEvents, LothlorienEvents};
+use events::{ClientResponse, ConnectedClientEvents};
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
 use request::{ContextType, Request, RequestType, ServerRequest};
@@ -19,6 +19,7 @@ use tungstenite::Message;
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
+    events::GaladrielEvents,
     shellscape::notifications::ShellscapeNotifications,
     GaladrielResult,
 };
@@ -33,9 +34,9 @@ mod request;
 #[derive(Debug)]
 pub struct LothlorienPipeline {
     // Sender for pipeline events
-    pipeline_sender: UnboundedSender<LothlorienEvents>,
+    pipeline_sender: UnboundedSender<GaladrielEvents>,
     // Receiver for pipeline events
-    pipeline_receiver: UnboundedReceiver<LothlorienEvents>,
+    pipeline_receiver: UnboundedReceiver<GaladrielEvents>,
 
     // Sender for connected client events
     runtime_sender: broadcast::Sender<ConnectedClientEvents>,
@@ -120,9 +121,19 @@ impl LothlorienPipeline {
         // Clone the pipeline and runtime senders to be used inside the spawned task
         let _sender = self.pipeline_sender.clone();
         let _runtime_sender = self.runtime_sender.clone();
-        let heading = random_server_subheading_message();
 
-        if let Err(err) = _sender.send(LothlorienEvents::Header(heading)) {
+        let start_time = Local::now();
+        let ending_time = Local::now();
+        let duration = ending_time - start_time;
+
+        let notification = ShellscapeNotifications::create_success(
+            start_time,
+            ending_time,
+            duration,
+            &random_server_subheading_message(),
+        );
+
+        if let Err(err) = _sender.send(GaladrielEvents::Notify(notification)) {
             error!("Failed to send the server's header message to the main runtime. Error details: {:?}", err);
         }
 
@@ -165,7 +176,7 @@ impl LothlorienPipeline {
                                             "Client has successfully disconnected from the Galadriel CSS server. No further events will be sent to this client."
                                         );
 
-                                        if let Err(err) = _sender.send(LothlorienEvents::Notify(notification)) {
+                                        if let Err(err) = _sender.send(GaladrielEvents::Notify(notification)) {
                                             error!(
                                                 "Failed to send client disconnection notification to the main runtime. Error details: {:?}",
                                                 err
@@ -177,7 +188,7 @@ impl LothlorienPipeline {
                                         error!("Error occurred while processing client connection: {:?}", err);
 
                                         // Send an error notification to the pipeline sender
-                                        if let Err(err) = _sender.send(LothlorienEvents::Error(err)) {
+                                        if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
                                             error!("Failed to notify the main runtime about error: {:?}", err);
                                         }
                                     }
@@ -192,7 +203,7 @@ impl LothlorienPipeline {
                                         error!("Unexpected error in handling connection: {:?}", err);
 
                                         // Send an error notification to the pipeline sender
-                                        if let Err(err) = _sender.send(LothlorienEvents::Error(err)) {
+                                        if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
                                             error!("Failed to notify the main runtime about error: {:?}", err);
                                         }
                                     }
@@ -209,7 +220,7 @@ impl LothlorienPipeline {
                                 error!("Failed to accept incoming client connection: {:?}", err);
 
                                 // Send an error notification to the pipeline sender
-                                if let Err(err) = _sender.send(LothlorienEvents::Error(err)) {
+                                if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
                                     error!("Failed to notify the main runtime about error: {:?}", err);
                                 }
                             }
@@ -225,7 +236,7 @@ impl LothlorienPipeline {
     /// # Returns
     ///
     /// A result containing either the received event or an error.
-    pub async fn next(&mut self) -> GaladrielResult<LothlorienEvents> {
+    pub async fn next(&mut self) -> GaladrielResult<GaladrielEvents> {
         self.pipeline_receiver.recv().await.ok_or_else(|| {
             error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
 
@@ -340,7 +351,7 @@ impl LothlorienPipeline {
     /// This function may return errors related to WebSocket connection failures, message sending issues, or event processing failures.
     async fn stream_sync(
         stream: tokio::net::TcpStream,
-        pipeline_sender: UnboundedSender<LothlorienEvents>,
+        pipeline_sender: UnboundedSender<GaladrielEvents>,
         runtime_sender: broadcast::Sender<ConnectedClientEvents>,
     ) -> GaladrielResult<()> {
         // Establishes a WebSocket connection and splits it into sender and receiver components.
@@ -388,7 +399,7 @@ impl LothlorienPipeline {
             "A new client has successfully connected to the Galadriel server and is now ready to request and receive events."
         );
 
-        if let Err(err) = pipeline_sender.send(LothlorienEvents::Notify(notification)) {
+        if let Err(err) = pipeline_sender.send(GaladrielEvents::Notify(notification)) {
             error!(
                 "Failed to send client connection notification to main runtime. Error details: {:?}",
                 err
@@ -426,7 +437,7 @@ impl LothlorienPipeline {
 
                                 let notification = ShellscapeNotifications::create_galadriel_error(Local::now(), err);
 
-                                if let Err(err) = pipeline_sender.send(LothlorienEvents::Notify(notification)) {
+                                if let Err(err) = pipeline_sender.send(GaladrielEvents::Notify(notification)) {
                                     error!(
                                         "Failed to send error notification to the main runtime. Error: {:?}",
                                         err
@@ -445,7 +456,7 @@ impl LothlorienPipeline {
 
     fn handle_stream_response(
         client_response: &Option<Result<Message, tungstenite::Error>>,
-        pipeline_sender: UnboundedSender<LothlorienEvents>,
+        pipeline_sender: UnboundedSender<GaladrielEvents>,
     ) -> ClientResponse {
         match client_response {
             // If no more data is received, the client has disconnected.
@@ -468,7 +479,7 @@ impl LothlorienPipeline {
                     ErrorAction::Notify,
                 );
 
-                if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
+                if let Err(err) = pipeline_sender.send(GaladrielEvents::Error(err)) {
                     error!("Failed to notify runtime of error: {:?}", err);
                 }
 
@@ -499,7 +510,7 @@ impl LothlorienPipeline {
                         );
 
                         // Notifies the runtime of the error during request processing.
-                        if let Err(err) = pipeline_sender.send(LothlorienEvents::Error(err)) {
+                        if let Err(err) = pipeline_sender.send(GaladrielEvents::Error(err)) {
                             error!(
                                 "Failed to notify runtime of error during request processing: {:?}",
                                 err
