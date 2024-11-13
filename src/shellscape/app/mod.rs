@@ -1,26 +1,45 @@
-use std::ops::Add;
-
+use chrono::Local;
 use rand::Rng;
 use ratatui::widgets::ScrollbarState;
+use syntect::{
+    easy::HighlightLines,
+    highlighting::ThemeSet,
+    parsing::{SyntaxReference, SyntaxSet, SyntaxSetBuilder},
+};
 use tracing::{debug, info};
 
-use crate::configatron::Configatron;
+use crate::{
+    configatron::Configatron,
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    GaladrielResult,
+};
 
-use super::{metadata::ShellscapeMetadata, notifications::ShellscapeNotifications};
+use super::{
+    area::ShellscapeArea, metadata::ShellscapeMetadata, notifications::ShellscapeNotifications,
+};
 
 #[allow(dead_code)]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Debug)]
 pub struct ShellscapeApp {
     pub metadata: ShellscapeMetadata,
     pub configs: Configatron,
     pub notifications: Vec<ShellscapeNotifications>,
-    pub notifications_offset: (u16, u16),
-    pub notification_scroll_vertical: ScrollbarState,
+    pub notifications_scroll_offset: (u16, u16),
+    pub notifications_area: ShellscapeArea,
+    pub notification_vertical_scroll_state: ScrollbarState,
+    pub notifications_scroll_len: usize,
+    pub dock_scroll_offset: (u16, u16),
+    pub dock_area: ShellscapeArea,
+    pub dock_vertical_scroll_state: ScrollbarState,
+    pub dock_scroll_len: usize,
+    pub syntax_set: SyntaxSet,
+    pub theme_set: ThemeSet,
+    pub syntax: SyntaxReference,
 }
 
 #[allow(dead_code)]
 impl ShellscapeApp {
-    pub fn new(configs: Configatron, version: &str) -> Self {
+    pub fn new(configs: Configatron, version: &str) -> GaladrielResult<Self> {
         let metadata = ShellscapeMetadata::new(
             "Galadriel CSS".to_string(),
             random_subtitle_message(),
@@ -30,17 +49,119 @@ impl ShellscapeApp {
             "\u{00A9} 2024 Galadriel CSS. Crafting modular, efficient, and scalable styles with precision. Built with Rust.".to_string(),
         );
 
-        Self {
-            notification_scroll_vertical: ScrollbarState::new(0),
-            notifications_offset: (0, 0),
+        let mut ssb = SyntaxSetBuilder::new();
+        ssb.add_from_folder("src/shellscape/syntax", true)
+            .map_err(|err| {
+                GaladrielError::raise_general_interface_error(
+                    ErrorKind::NenyrSyntaxIntegrationFailed,
+                    &err.to_string(),
+                    ErrorAction::Exit,
+                )
+            })?;
+
+        let syntax_set = ssb.build();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set
+            .find_syntax_by_name("Nenyr")
+            .ok_or(GaladrielError::raise_general_interface_error(
+                ErrorKind::NenyrSyntaxMissing,
+                "The Nenyr syntax could not be found in the syntax set.",
+                ErrorAction::Exit,
+            ))?
+            .to_owned();
+
+        Ok(Self {
+            notification_vertical_scroll_state: ScrollbarState::new(0),
+            notifications_scroll_offset: (0, 0),
+            notifications_area: ShellscapeArea::new(0, 0, 0, 0),
+            notifications_scroll_len: 0,
+            dock_vertical_scroll_state: ScrollbarState::new(0),
+            dock_scroll_offset: (0, 0),
+            dock_area: ShellscapeArea::new(0, 0, 0, 0),
+            dock_scroll_len: 0,
             notifications: vec![],
             configs,
             metadata,
+            syntax_set,
+            theme_set,
+            syntax,
+        })
+    }
+
+    pub fn highlighter(&mut self, code: &str) -> Vec<(syntect::highlighting::Style, String)> {
+        let mut highlighter =
+            HighlightLines::new(&self.syntax, &self.theme_set.themes["Solarized (light)"]);
+
+        let mut lines: Vec<(syntect::highlighting::Style, String)> = vec![];
+        let highlighter_result = highlighter.highlight_line(code, &self.syntax_set);
+
+        match highlighter_result {
+            Ok(highlighter_lines) => {
+                for (style, text) in highlighter_lines {
+                    lines.push((style, text.to_string()));
+                }
+            }
+            Err(err) => {
+                self.add_notification(ShellscapeNotifications::create_galadriel_error(
+                    Local::now(),
+                    GaladrielError::raise_general_interface_error(
+                        ErrorKind::NenyrSyntaxHighlightingError,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    ),
+                ));
+            }
         }
+
+        lines
     }
 
     pub fn tick(&self) {
         info!("ShellscapeApp tick method called.");
+    }
+
+    pub fn get_author(&self) -> String {
+        self.metadata.author.clone()
+    }
+
+    pub fn get_version(&self) -> String {
+        self.metadata.version.clone()
+    }
+
+    pub fn get_license(&self) -> String {
+        self.metadata.license.clone()
+    }
+
+    pub fn get_subtitle(&self) -> String {
+        self.metadata.subtitle.clone()
+    }
+
+    pub fn get_title(&self) -> String {
+        self.metadata.title.clone()
+    }
+
+    pub fn get_footer(&self) -> String {
+        self.metadata.footer.clone()
+    }
+
+    pub fn get_notifications(&self) -> Vec<ShellscapeNotifications> {
+        self.notifications.clone()
+    }
+
+    pub fn get_notifications_offset(&self) -> (u16, u16) {
+        self.notifications_scroll_offset.clone()
+    }
+
+    pub fn get_dock_offset(&self) -> (u16, u16) {
+        self.dock_scroll_offset.clone()
+    }
+
+    pub fn get_dock_area(&self) -> ShellscapeArea {
+        self.dock_area.clone()
+    }
+
+    pub fn get_notifications_area(&self) -> ShellscapeArea {
+        self.notifications_area.clone()
     }
 
     pub fn add_notification(&mut self, notification: ShellscapeNotifications) {
@@ -52,6 +173,25 @@ impl ShellscapeApp {
 
     pub fn clear_notifications(&mut self) {
         self.notifications.clear();
+    }
+
+    pub fn reset_notifications_scroll_state(&mut self, len: usize) {
+        self.notifications_scroll_len = len;
+        self.notification_vertical_scroll_state =
+            self.notification_vertical_scroll_state.content_length(len);
+    }
+
+    pub fn reset_dock_scroll_state(&mut self, len: usize) {
+        self.dock_scroll_len = len;
+        self.dock_vertical_scroll_state = self.dock_vertical_scroll_state.content_length(len);
+    }
+
+    pub fn reset_notifications_area(&mut self, area: ShellscapeArea) {
+        self.notifications_area = area;
+    }
+
+    pub fn reset_dock_area(&mut self, area: ShellscapeArea) {
+        self.dock_area = area;
     }
 
     pub fn reset_configs_state(&mut self, configs: Configatron) {
@@ -66,16 +206,45 @@ impl ShellscapeApp {
         self.metadata.reset_subtitle(subtitle);
     }
 
-    pub fn reset_scroll_up(&mut self) {
-        let (y, _) = self.notifications_offset;
+    pub fn reset_notifications_scroll_up(&mut self) {
+        let (y, _) = self.notifications_scroll_offset;
+        let result = y.saturating_add(1);
 
-        self.notifications_offset = (y.add(1), 0);
+        if result as usize <= self.notifications_scroll_len {
+            self.notifications_scroll_offset = (result, 0);
+            self.notification_vertical_scroll_state = self
+                .notification_vertical_scroll_state
+                .position(result as usize);
+        }
     }
 
-    pub fn reset_scroll_down(&mut self) {
-        let (y, _) = self.notifications_offset;
+    pub fn reset_notifications_scroll_down(&mut self) {
+        let (y, _) = self.notifications_scroll_offset;
+        let result = y.saturating_sub(1);
 
-        self.notifications_offset = (y.saturating_sub(1), 0);
+        self.notifications_scroll_offset = (result, 0);
+        self.notification_vertical_scroll_state = self
+            .notification_vertical_scroll_state
+            .position(result as usize);
+    }
+
+    pub fn reset_dock_scroll_up(&mut self) {
+        let (y, _) = self.dock_scroll_offset;
+        let result = y.saturating_add(1);
+
+        if result as usize <= self.dock_scroll_len {
+            self.dock_scroll_offset = (result, 0);
+            self.dock_vertical_scroll_state =
+                self.dock_vertical_scroll_state.position(result as usize);
+        }
+    }
+
+    pub fn reset_dock_scroll_down(&mut self) {
+        let (y, _) = self.dock_scroll_offset;
+        let result = y.saturating_sub(1);
+
+        self.dock_scroll_offset = (result, 0);
+        self.dock_vertical_scroll_state = self.dock_vertical_scroll_state.position(result as usize);
     }
 }
 
@@ -115,7 +284,7 @@ mod tests {
     fn test_shellscape_app_new() {
         let mock_config = get_configatron();
 
-        let app = ShellscapeApp::new(mock_config, "1.0.0");
+        let app = ShellscapeApp::new(mock_config, "1.0.0").unwrap();
 
         assert_eq!(app.metadata.title, "Galadriel CSS");
         assert_eq!(app.metadata.author, "Patrick Gunnar");
@@ -130,7 +299,7 @@ mod tests {
     #[test]
     fn test_shellscape_app_tick() {
         let mock_config = get_configatron();
-        let app = ShellscapeApp::new(mock_config, "1.0.0");
+        let app = ShellscapeApp::new(mock_config, "1.0.0").unwrap();
 
         app.tick();
     }
@@ -139,7 +308,7 @@ mod tests {
     fn test_shellscape_app_reset_configs_state() {
         let mock_config = get_configatron();
         let new_config = get_configatron();
-        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0");
+        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0").unwrap();
 
         // Check initial configuration
         assert_eq!(app.configs, mock_config);

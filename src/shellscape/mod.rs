@@ -14,6 +14,7 @@ use crate::{
 };
 
 pub mod app;
+mod area;
 pub mod commands;
 mod events;
 mod metadata;
@@ -89,7 +90,7 @@ impl Shellscape {
     ///
     /// # Returns
     /// A `ShellscapeApp` instance initialized with the provided configurations.
-    pub fn create_app(&self, configs: Configatron) -> ShellscapeApp {
+    pub fn create_app(&self, configs: Configatron) -> GaladrielResult<ShellscapeApp> {
         info!("Creating Shellscape application instance with provided configurations.");
 
         ShellscapeApp::new(configs, "1.0.0")
@@ -147,6 +148,10 @@ impl Shellscape {
                 info!("Processing key event: {:?}", key);
                 ShellscapeCommands::from_key_event(key)
             }
+            ShellscapeTerminalEvents::Mouse(event) => {
+                info!("Processing mouse event: {:?}", event);
+                ShellscapeCommands::from_mouse_event(event)
+            }
             // If the event is unrecognized, log a warning and return None
             _ => {
                 // warn!("Received an unrecognized Shellscape event: {:?}", event);
@@ -185,7 +190,7 @@ mod tests {
             "8080".to_string(),
             "1.0.0".to_string(),
         );
-        let app = shellscape.create_app(configs.clone());
+        let app = shellscape.create_app(configs.clone()).unwrap();
 
         assert_eq!(app.configs, configs);
     }

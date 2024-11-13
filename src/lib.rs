@@ -141,7 +141,7 @@ impl GaladrielRuntime {
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
         let mut interface = shellscape.create_interface()?; // Terminal interface setup
-        let mut shellscape_app = shellscape.create_app(self.configatron.clone()); // Application/state setup for Shellscape
+        let mut shellscape_app = shellscape.create_app(self.configatron.clone())?; // Application/state setup for Shellscape
 
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
@@ -261,11 +261,61 @@ impl GaladrielRuntime {
                                 ShellscapeCommands::Terminate => {
                                     break;
                                 }
-                                ShellscapeCommands::ScrollUp => {
-                                    shellscape_app.reset_scroll_down();
+                                ShellscapeCommands::ScrollNotificationsUp => {
+                                    shellscape_app.reset_notifications_scroll_down();
                                 }
-                                ShellscapeCommands::ScrollDown => {
-                                    shellscape_app.reset_scroll_up();
+                                ShellscapeCommands::ScrollNotificationsDown => {
+                                    shellscape_app.reset_notifications_scroll_up();
+                                }
+                                ShellscapeCommands::ScrollDockUp => {
+                                    shellscape_app.reset_dock_scroll_down();
+                                }
+                                ShellscapeCommands::ScrollDockDown => {
+                                    shellscape_app.reset_dock_scroll_up();
+                                }
+                                ShellscapeCommands::ScrollUp { column, row } => {
+                                    // Get the current areas for the dock and notifications
+                                    let dock_area = shellscape_app.get_dock_area();
+                                    let notify_area = shellscape_app.get_notifications_area();
+
+                                    // Check if the column and row of the event fall within the boundaries of the dock area
+                                    // Check if 'column' is within the dock's left and right boundaries
+                                    // Check if 'row' is within the dock's top and bottom boundaries
+                                    if dock_area.left() <= column && column <= dock_area.right()
+                                        && dock_area.top() <= row && row <= dock_area.bottom() {
+                                        // If the event is within the dock area, reset the scroll for the dock downwards
+                                        shellscape_app.reset_dock_scroll_down();
+
+                                    // Check if the column and row of the event fall within the boundaries of the notifications area
+                                    // Check if 'column' is within the notification's left and right boundaries
+                                    // Check if 'row' is within the notification's top and bottom boundaries
+                                    } else if notify_area.left() <= column && column <= notify_area.right()
+                                        && notify_area.top() <= row && row <= notify_area.bottom() {
+                                        // If the event is within the notifications area, reset the scroll for notifications downwards
+                                        shellscape_app.reset_notifications_scroll_down();
+                                    }
+                                }
+                                ShellscapeCommands::ScrollDown { column, row } => {
+                                    // Get the current areas for the dock and notifications
+                                    let dock_area = shellscape_app.get_dock_area();
+                                    let notify_area = shellscape_app.get_notifications_area();
+
+                                    // Check if the column and row of the event fall within the boundaries of the dock area
+                                    // Check if 'column' is within the dock's left and right boundaries
+                                    // Check if 'row' is within the dock's top and bottom boundaries
+                                    if dock_area.left() <= column && column <= dock_area.right()
+                                        && dock_area.top() <= row && row <= dock_area.bottom() {
+                                        // If the event is within the dock area, reset the scroll for the dock upwards
+                                        shellscape_app.reset_dock_scroll_up();
+
+                                    // Check if the column and row of the event fall within the boundaries of the notifications area
+                                    // Check if 'column' is within the notification's left and right boundaries
+                                    // Check if 'row' is within the notification's top and bottom boundaries
+                                    } else if notify_area.left() <= column && column <= notify_area.right()
+                                        && notify_area.top() <= row && row <= notify_area.bottom() {
+                                        // If the event is within the notifications area, reset the scroll for notifications upwards
+                                        shellscape_app.reset_notifications_scroll_up();
+                                    }
                                 }
                                 _ => {}
                             }

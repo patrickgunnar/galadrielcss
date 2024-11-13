@@ -255,7 +255,8 @@ mod tests {
                 "1.0.0".to_string(),
             ),
             "1.0.0",
-        );
+        )
+        .unwrap();
 
         // Call render and check if it's successful
         let result = interface.render(&mut app);

@@ -499,6 +499,9 @@ pub enum ErrorKind {
     ConnectionTerminationError,
     DebouncedEventError,
     AsyncWatcherInitializationFailed,
+    NenyrSyntaxIntegrationFailed,
+    NenyrSyntaxMissing,
+    NenyrSyntaxHighlightingError,
     Other,
 }
 

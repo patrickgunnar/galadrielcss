@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use tracing::info;
 
 /// Enum representing the various shellscape commands.
@@ -8,8 +8,18 @@ pub enum ShellscapeCommands {
     Terminate,
     /// No operation or command.
     None,
-    ScrollUp,
-    ScrollDown,
+    ScrollNotificationsUp,
+    ScrollNotificationsDown,
+    ScrollDockUp,
+    ScrollDockDown,
+    ScrollUp {
+        column: u16,
+        row: u16,
+    },
+    ScrollDown {
+        column: u16,
+        row: u16,
+    },
 }
 
 impl ShellscapeCommands {
@@ -39,10 +49,32 @@ impl ShellscapeCommands {
                 info!("Received termination command via `Ctrl+C`");
                 ShellscapeCommands::Terminate
             }
-            KeyCode::Up if event.modifiers == KeyModifiers::CONTROL => ShellscapeCommands::ScrollUp,
-            KeyCode::Down if event.modifiers == KeyModifiers::CONTROL => {
-                ShellscapeCommands::ScrollDown
+            KeyCode::Up if event.modifiers == KeyModifiers::CONTROL => {
+                ShellscapeCommands::ScrollNotificationsUp
             }
+            KeyCode::Down if event.modifiers == KeyModifiers::CONTROL => {
+                ShellscapeCommands::ScrollNotificationsDown
+            }
+            KeyCode::Up if event.modifiers == KeyModifiers::SHIFT => {
+                ShellscapeCommands::ScrollDockUp
+            }
+            KeyCode::Down if event.modifiers == KeyModifiers::SHIFT => {
+                ShellscapeCommands::ScrollDockDown
+            }
+            _ => ShellscapeCommands::None,
+        }
+    }
+
+    pub fn from_mouse_event(event: MouseEvent) -> ShellscapeCommands {
+        match event.kind {
+            MouseEventKind::ScrollDown => ShellscapeCommands::ScrollDown {
+                column: event.column,
+                row: event.row,
+            },
+            MouseEventKind::ScrollUp => ShellscapeCommands::ScrollUp {
+                column: event.column,
+                row: event.row,
+            },
             _ => ShellscapeCommands::None,
         }
     }

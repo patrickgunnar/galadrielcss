@@ -4,6 +4,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info, warn};
 
 /// Enum representing the types of terminal events for Shellscape.
+#[allow(dead_code)]
 #[derive(Clone, PartialEq, Debug)]
 pub enum ShellscapeTerminalEvents {
     /// Terminal tick.
@@ -94,13 +95,13 @@ impl ShellscapeEvents {
                                 }*/
                             }
                             // Handle terminal resize events, sending them with width and height.
-                            CrosstermEvent::Resize(x, y) => {
+                            /*CrosstermEvent::Resize(x, y) => {
                                 if let Err(err) = _sender.send(ShellscapeTerminalEvents::Resize(x, y)) {
                                     error!("Failed to send Resize event (width: {}, height: {}) to Shellscape terminal event receiver: {}", x, y, err);
                                 } else {
                                     info!("Resize event (width: {}, height: {}) sent to Shellscape terminal event receiver", x, y);
                                 }
-                            }
+                            }*/
                             _ => {
                                 warn!("Unhandled event type received from crossterm");
                             }
