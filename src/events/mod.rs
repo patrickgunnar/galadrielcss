@@ -1,8 +1,8 @@
-use crate::{error::GaladrielError, shellscape::notifications::ShellscapeNotifications};
+use crate::{error::GaladrielError, shellscape::alerts::ShellscapeAlerts};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum GaladrielEvents {
-    Notify(ShellscapeNotifications),
+    Notify(ShellscapeAlerts),
     Error(GaladrielError),
     ReloadGaladrielConfigs,
 }

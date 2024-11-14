@@ -14,24 +14,24 @@ use crate::{
     GaladrielResult,
 };
 
-use super::{
-    area::ShellscapeArea, metadata::ShellscapeMetadata, notifications::ShellscapeNotifications,
-};
+use super::{alerts::ShellscapeAlerts, area::ShellscapeArea, metadata::ShellscapeMetadata};
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ShellscapeApp {
     pub metadata: ShellscapeMetadata,
     pub configs: Configatron,
-    pub notifications: Vec<ShellscapeNotifications>,
-    pub notifications_scroll_offset: (u16, u16),
-    pub notifications_area: ShellscapeArea,
-    pub notification_vertical_scroll_state: ScrollbarState,
-    pub notifications_scroll_len: usize,
-    pub dock_scroll_offset: (u16, u16),
-    pub dock_area: ShellscapeArea,
-    pub dock_vertical_scroll_state: ScrollbarState,
+    pub alerts: Vec<ShellscapeAlerts>,
+
+    pub table_scroll_state: ScrollbarState,
+    pub dock_scroll_state: ScrollbarState,
+    pub table_vertical_axis: u16,
+    pub dock_vertical_axis: u16,
+    pub table_scroll_len: usize,
     pub dock_scroll_len: usize,
+    pub table_area: ShellscapeArea,
+    pub dock_area: ShellscapeArea,
+
     pub syntax_set: SyntaxSet,
     pub theme_set: ThemeSet,
     pub syntax: SyntaxReference,
@@ -71,15 +71,15 @@ impl ShellscapeApp {
             .to_owned();
 
         Ok(Self {
-            notification_vertical_scroll_state: ScrollbarState::new(0),
-            notifications_scroll_offset: (0, 0),
-            notifications_area: ShellscapeArea::new(0, 0, 0, 0),
-            notifications_scroll_len: 0,
-            dock_vertical_scroll_state: ScrollbarState::new(0),
-            dock_scroll_offset: (0, 0),
+            alerts: vec![],
+            table_scroll_state: ScrollbarState::new(0),
+            dock_scroll_state: ScrollbarState::new(0),
+            table_area: ShellscapeArea::new(0, 0, 0, 0),
             dock_area: ShellscapeArea::new(0, 0, 0, 0),
+            table_vertical_axis: 0,
+            dock_vertical_axis: 0,
+            table_scroll_len: 0,
             dock_scroll_len: 0,
-            notifications: vec![],
             configs,
             metadata,
             syntax_set,
@@ -102,7 +102,7 @@ impl ShellscapeApp {
                 }
             }
             Err(err) => {
-                self.add_notification(ShellscapeNotifications::create_galadriel_error(
+                self.add_alert(ShellscapeAlerts::create_galadriel_error(
                     Local::now(),
                     GaladrielError::raise_general_interface_error(
                         ErrorKind::NenyrSyntaxHighlightingError,
@@ -116,8 +116,31 @@ impl ShellscapeApp {
         lines
     }
 
-    pub fn tick(&self) {
-        info!("ShellscapeApp tick method called.");
+    pub fn add_alert(&mut self, alert: ShellscapeAlerts) {
+        info!("Adding Galadriel notification in ShellscapeApp.");
+        debug!("New notification: {:?}", alert);
+
+        self.alerts.insert(0, alert);
+    }
+
+    pub fn clear_alerts(&mut self) {
+        self.alerts.clear();
+    }
+
+    pub fn reset_configs_state(&mut self, configs: Configatron) {
+        info!("Resetting Galadriel configurations in ShellscapeApp.");
+        debug!("Old configurations: {:?}", self.configs);
+        debug!("New configurations: {:?}", configs);
+
+        self.configs = configs;
+    }
+
+    pub fn reset_subtitle(&mut self, subtitle: String) {
+        self.metadata.reset_subtitle(subtitle);
+    }
+
+    pub fn get_alerts(&self) -> Vec<ShellscapeAlerts> {
+        self.alerts.clone()
     }
 
     pub fn get_author(&self) -> String {
@@ -144,107 +167,74 @@ impl ShellscapeApp {
         self.metadata.footer.clone()
     }
 
-    pub fn get_notifications(&self) -> Vec<ShellscapeNotifications> {
-        self.notifications.clone()
-    }
-
-    pub fn get_notifications_offset(&self) -> (u16, u16) {
-        self.notifications_scroll_offset.clone()
-    }
-
-    pub fn get_dock_offset(&self) -> (u16, u16) {
-        self.dock_scroll_offset.clone()
-    }
-
     pub fn get_dock_area(&self) -> ShellscapeArea {
         self.dock_area.clone()
     }
 
-    pub fn get_notifications_area(&self) -> ShellscapeArea {
-        self.notifications_area.clone()
+    pub fn get_alerts_area(&self) -> ShellscapeArea {
+        self.table_area.clone()
     }
 
-    pub fn add_notification(&mut self, notification: ShellscapeNotifications) {
-        info!("Adding Galadriel notification in ShellscapeApp.");
-        debug!("New notification: {:?}", notification);
-
-        self.notifications.insert(0, notification);
+    pub fn get_table_vertical_axis(&self) -> u16 {
+        self.table_vertical_axis
     }
 
-    pub fn clear_notifications(&mut self) {
-        self.notifications.clear();
+    pub fn get_dock_vertical_axis(&self) -> u16 {
+        self.dock_vertical_axis
     }
 
-    pub fn reset_notifications_scroll_state(&mut self, len: usize) {
-        self.notifications_scroll_len = len;
-        self.notification_vertical_scroll_state =
-            self.notification_vertical_scroll_state.content_length(len);
-    }
-
-    pub fn reset_dock_scroll_state(&mut self, len: usize) {
-        self.dock_scroll_len = len;
-        self.dock_vertical_scroll_state = self.dock_vertical_scroll_state.content_length(len);
-    }
-
-    pub fn reset_notifications_area(&mut self, area: ShellscapeArea) {
-        self.notifications_area = area;
+    pub fn reset_table_area(&mut self, area: ShellscapeArea) {
+        self.table_area = area;
     }
 
     pub fn reset_dock_area(&mut self, area: ShellscapeArea) {
         self.dock_area = area;
     }
 
-    pub fn reset_configs_state(&mut self, configs: Configatron) {
-        info!("Resetting Galadriel configurations in ShellscapeApp.");
-        debug!("Old configurations: {:?}", self.configs);
-        debug!("New configurations: {:?}", configs);
-
-        self.configs = configs;
+    pub fn reset_table_scroll_state(&mut self, len: usize) {
+        self.table_scroll_len = len;
+        self.table_scroll_state = self.table_scroll_state.content_length(len);
     }
 
-    pub fn reset_subtitle(&mut self, subtitle: String) {
-        self.metadata.reset_subtitle(subtitle);
+    pub fn reset_dock_scroll_state(&mut self, len: usize) {
+        self.dock_scroll_len = len;
+        self.dock_scroll_state = self.dock_scroll_state.content_length(len);
     }
 
-    pub fn reset_notifications_scroll_up(&mut self) {
-        let (y, _) = self.notifications_scroll_offset;
-        let result = y.saturating_add(1);
+    pub fn tick(&self) {
+        info!("ShellscapeApp tick method called.");
+    }
 
-        if result as usize <= self.notifications_scroll_len {
-            self.notifications_scroll_offset = (result, 0);
-            self.notification_vertical_scroll_state = self
-                .notification_vertical_scroll_state
-                .position(result as usize);
+    pub fn reset_alerts_scroll_up(&mut self) {
+        let result = self.table_vertical_axis.saturating_add(1);
+
+        if result as usize <= self.table_scroll_len {
+            self.table_vertical_axis = result;
+            self.table_scroll_state = self.table_scroll_state.position(result as usize);
         }
     }
 
-    pub fn reset_notifications_scroll_down(&mut self) {
-        let (y, _) = self.notifications_scroll_offset;
-        let result = y.saturating_sub(1);
+    pub fn reset_alerts_scroll_down(&mut self) {
+        let result = self.table_vertical_axis.saturating_sub(1);
 
-        self.notifications_scroll_offset = (result, 0);
-        self.notification_vertical_scroll_state = self
-            .notification_vertical_scroll_state
-            .position(result as usize);
+        self.table_vertical_axis = result;
+        self.table_scroll_state = self.table_scroll_state.position(result as usize);
     }
 
     pub fn reset_dock_scroll_up(&mut self) {
-        let (y, _) = self.dock_scroll_offset;
-        let result = y.saturating_add(1);
+        let result = self.dock_vertical_axis.saturating_add(1);
 
         if result as usize <= self.dock_scroll_len {
-            self.dock_scroll_offset = (result, 0);
-            self.dock_vertical_scroll_state =
-                self.dock_vertical_scroll_state.position(result as usize);
+            self.dock_vertical_axis = result;
+            self.dock_scroll_state = self.dock_scroll_state.position(result as usize);
         }
     }
 
     pub fn reset_dock_scroll_down(&mut self) {
-        let (y, _) = self.dock_scroll_offset;
-        let result = y.saturating_sub(1);
+        let result = self.dock_vertical_axis.saturating_sub(1);
 
-        self.dock_scroll_offset = (result, 0);
-        self.dock_vertical_scroll_state = self.dock_vertical_scroll_state.position(result as usize);
+        self.dock_vertical_axis = result;
+        self.dock_scroll_state = self.dock_scroll_state.position(result as usize);
     }
 }
 

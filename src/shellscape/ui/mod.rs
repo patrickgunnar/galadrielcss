@@ -130,7 +130,9 @@ impl<B: Backend> ShellscapeInterface<B> {
 
         // Render the application widgets to the terminal
         self.terminal
-            .draw(|frame| ShellscapeWidgets::paint(frame, shellscape_app))
+            .draw(|frame| {
+                ShellscapeWidgets::new().paint(frame, shellscape_app);
+            })
             .map_err(|err| {
                 error!("Failed to render interface: {:?}", err);
 

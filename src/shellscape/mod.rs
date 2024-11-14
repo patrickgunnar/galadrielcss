@@ -13,12 +13,12 @@ use crate::{
     GaladrielResult,
 };
 
+pub mod alerts;
 pub mod app;
 mod area;
 pub mod commands;
 mod events;
 mod metadata;
-pub mod notifications;
 mod ui;
 mod widgets;
 

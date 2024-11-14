@@ -19,7 +19,7 @@ use tracing::{debug, error, info, warn};
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::GaladrielEvents,
-    shellscape::notifications::ShellscapeNotifications,
+    shellscape::alerts::ShellscapeAlerts,
     GaladrielResult,
 };
 
@@ -208,7 +208,7 @@ impl BaraddurObserver {
         let ending_time = Local::now();
         let duration = ending_time - start_time;
 
-        let notification = ShellscapeNotifications::create_success(
+        let notification = ShellscapeAlerts::create_success(
             start_time,
             ending_time,
             duration,
@@ -414,7 +414,7 @@ impl BaraddurObserver {
 
     async fn process_nenyr_file(observer_sender: UnboundedSender<GaladrielEvents>, path: &PathBuf) {
         let start_time = Local::now();
-        let notification = ShellscapeNotifications::create_information(
+        let notification = ShellscapeAlerts::create_information(
             start_time,
             &format!("Initiating parsing of: {:?}", path.to_string_lossy()),
         );
@@ -430,7 +430,7 @@ impl BaraddurObserver {
 
         let ending_time = Local::now();
         let duration = ending_time - start_time;
-        let notification = ShellscapeNotifications::create_success(
+        let notification = ShellscapeAlerts::create_success(
             start_time,
             ending_time,
             duration,
@@ -471,7 +471,7 @@ fn random_watch_message() -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::shellscape::notifications::ShellscapeNotifications;
+    use crate::shellscape::alerts::ShellscapeAlerts;
 
     use super::{BaraddurObserver, GaladrielEvents};
     use std::{path::PathBuf, sync::Arc};
@@ -493,7 +493,7 @@ mod tests {
         let mut observer = BaraddurObserver::new(PathBuf::from("."), 250);
         let sender = observer.observer_sender.clone();
         let notification =
-            ShellscapeNotifications::create_information(Local::now(), "Test message");
+            ShellscapeAlerts::create_information(Local::now(), "Test message");
 
         // Send an event from the sender side.
         let expected_event = GaladrielEvents::Notify(notification);

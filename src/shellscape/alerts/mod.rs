@@ -5,7 +5,7 @@ use crate::error::GaladrielError;
 
 #[allow(dead_code)]
 #[derive(Clone, PartialEq, Debug)]
-pub enum ShellscapeNotifications {
+pub enum ShellscapeAlerts {
     Success {
         start_time: DateTime<Local>,
         ending_time: DateTime<Local>,
@@ -31,14 +31,14 @@ pub enum ShellscapeNotifications {
 }
 
 #[allow(dead_code)]
-impl ShellscapeNotifications {
+impl ShellscapeAlerts {
     pub fn create_success(
         start_time: DateTime<Local>,
         ending_time: DateTime<Local>,
         duration: TimeDelta,
         message: &str,
     ) -> Self {
-        ShellscapeNotifications::Success {
+        ShellscapeAlerts::Success {
             duration,
             start_time,
             ending_time,
@@ -47,24 +47,24 @@ impl ShellscapeNotifications {
     }
 
     pub fn create_information(start_time: DateTime<Local>, message: &str) -> Self {
-        ShellscapeNotifications::Information {
+        ShellscapeAlerts::Information {
             start_time,
             message: message.to_string(),
         }
     }
 
     pub fn create_warning(start_time: DateTime<Local>, message: &str) -> Self {
-        ShellscapeNotifications::Warning {
+        ShellscapeAlerts::Warning {
             start_time,
             message: message.to_string(),
         }
     }
 
     pub fn create_nenyr_error(start_time: DateTime<Local>, error: NenyrError) -> Self {
-        ShellscapeNotifications::NenyrError { start_time, error }
+        ShellscapeAlerts::NenyrError { start_time, error }
     }
 
     pub fn create_galadriel_error(start_time: DateTime<Local>, error: GaladrielError) -> Self {
-        ShellscapeNotifications::GaladrielError { start_time, error }
+        ShellscapeAlerts::GaladrielError { start_time, error }
     }
 }
