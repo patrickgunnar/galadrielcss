@@ -10,7 +10,7 @@ use ratatui::{
 
 use textwrap::Options;
 
-use crate::error::GaladrielError;
+use crate::{configatron::Configatron, error::GaladrielError};
 
 use super::{alerts::ShellscapeAlerts, app::ShellscapeApp, area::ShellscapeArea};
 
@@ -22,6 +22,7 @@ pub struct ShellscapeWidgets {
     light_cream_color: Color,
     deep_teal_color: Color,
     off_white_color: Color,
+    dark_mustard_color: Color,
 }
 
 impl ShellscapeWidgets {
@@ -32,7 +33,8 @@ impl ShellscapeWidgets {
             foreground_color: Color::Rgb(5, 10, 10),
             light_cream_color: Color::Rgb(240, 240, 240),
             deep_teal_color: Color::Rgb(0, 105, 105),
-            off_white_color: Color::Rgb(250, 250, 250),
+            off_white_color: Color::Rgb(245, 245, 245),
+            dark_mustard_color: Color::Rgb(128, 85, 0),
         }
     }
 
@@ -131,8 +133,302 @@ impl ShellscapeWidgets {
             )
     }
 
-    fn create_dock(&self, app: &mut ShellscapeApp) -> (Paragraph, usize) {
-        let lines: Vec<Line> = vec![Line::from(Span::raw("Settings"))];
+    fn format_config_label(
+        &self,
+        icon: String,
+        title: String,
+        value: String,
+        dock_width: u16,
+    ) -> Vec<Line> {
+        let length = title.len().saturating_add(value.len()).saturating_add(11);
+        let repeat = dock_width.saturating_sub(length as u16) as usize;
+
+        vec![Line::from(vec![
+            Span::styled(format!(" {} ", icon), Style::default()),
+            Span::styled(
+                format!(" {} ", title),
+                Style::default().bold().fg(self.off_white_color),
+            ),
+            Span::styled(" ".repeat(repeat), Style::default()),
+            Span::styled(
+                format!(" {}", value),
+                Style::default().fg(Color::White).italic(),
+            ),
+            Span::styled(" ", Style::default()),
+        ])]
+    }
+
+    fn format_exclude_vec(&self, title: String, value: Vec<String>, dock_width: u16) -> Vec<Line> {
+        let mut lines = vec![];
+        let title = Line::from(vec![
+            Span::raw(" \u{1F7E5}  "),
+            Span::styled(
+                format!("{}:", title,),
+                Style::default().bold().fg(self.off_white_color),
+            ),
+        ]);
+
+        lines.push(title);
+
+        value.iter().for_each(|v| {
+            let textwrap_width = dock_width.saturating_sub(15) as usize;
+            let parts = textwrap::wrap(v, Options::new(textwrap_width));
+            let parts_len = parts.len().saturating_sub(1);
+
+            parts.iter().enumerate().for_each(|(i, p)| {
+                let part = p.to_string();
+                let part_len = part.len().saturating_add(16);
+                let repeat = dock_width.saturating_sub(part_len as u16) as usize;
+
+                let open_str = if i == 0 { "   \u{1F538} \"" } else { "      " };
+                let closing_str = if i == parts_len { "\"" } else { "" };
+
+                lines.push(Line::from(vec![
+                    Span::raw(open_str),
+                    Span::styled(
+                        format!("{}{}", part, closing_str),
+                        Style::default().italic().fg(Color::White),
+                    ),
+                    Span::raw(" ".repeat(repeat)),
+                ]));
+            });
+        });
+
+        lines
+    }
+
+    fn format_block_title(&self, title: String, dock_width: u16) -> Line {
+        let block_title_len = title.len().saturating_add(4) as u16;
+        let label_width = dock_width.saturating_sub(block_title_len).saturating_div(2) as usize;
+        let spaces = " ".repeat(label_width);
+
+        Line::from(Span::styled(
+            format!("{}{}{}", spaces, title, spaces),
+            Style::default()
+                .bg(self.dark_mustard_color)
+                .fg(self.light_cream_color)
+                .bold(),
+        ))
+        .alignment(Alignment::Center)
+    }
+
+    fn format_dock_option(&self, label: String, value: String, dock_width: u16) -> Line {
+        let label_len = label.len();
+        let value_len = value.len();
+        let option_len = label_len.saturating_add(value_len).saturating_add(7);
+        let option_line_len = dock_width.saturating_sub(option_len as u16);
+        let spaces = " ".repeat(option_line_len as usize);
+
+        Line::from(vec![
+            Span::styled(format!(" \u{27A9} {}", label), Style::default()),
+            Span::raw(spaces),
+            Span::styled(
+                format!("{} ", value),
+                Style::default().bold().fg(self.off_white_color),
+            ),
+        ])
+    }
+
+    fn create_configs_viewer(&self, dock_width: u16, configs: Configatron, port: u16) -> Vec<Line> {
+        let mut lines: Vec<Line> = vec![];
+
+        let configs_title = self.format_block_title(" Configuration".to_string(), dock_width);
+        lines.push(configs_title);
+        lines.push(Line::from(Span::raw("")));
+
+        let mut reset_styles = self.format_config_label(
+            "\u{1F7E6}".to_string(),
+            "Reset Styles".to_string(),
+            format!("{}", configs.get_reset_styles()),
+            dock_width,
+        );
+
+        lines.append(&mut reset_styles);
+
+        let mut minified_styles = self.format_config_label(
+            "\u{1F7EA}".to_string(),
+            "Minified Styles".to_string(),
+            format!("{}", configs.get_minified_styles()),
+            dock_width,
+        );
+
+        lines.append(&mut minified_styles);
+
+        let mut auto_naming = self.format_config_label(
+            "\u{1F7EB}".to_string(),
+            "Auto Naming".to_string(),
+            format!("{}", configs.get_auto_naming()),
+            dock_width,
+        );
+
+        lines.append(&mut auto_naming);
+
+        let mut port_element = self.format_config_label(
+            "\u{2B1B}".to_string(),
+            "Port".to_string(),
+            format!("{}", port),
+            dock_width,
+        );
+
+        lines.append(&mut port_element);
+
+        let mut version = self.format_config_label(
+            "\u{1F7E7}".to_string(),
+            "Version".to_string(),
+            format!("{}", configs.get_version()),
+            dock_width,
+        );
+
+        lines.append(&mut version);
+
+        let mut exclude =
+            self.format_exclude_vec("Exclude".to_string(), configs.get_exclude(), dock_width);
+
+        lines.append(&mut exclude);
+
+        lines
+    }
+
+    fn create_adjustment_options(&self, dock_width: u16) -> Vec<Line> {
+        let mut lines: Vec<Line> = vec![];
+
+        let configs_title = self.format_block_title("Adjustments".to_string(), dock_width);
+
+        let toggle_reset = self.format_dock_option(
+            "Toggle R. Styles".to_string(),
+            "'Shift' + 'R'".to_string(),
+            dock_width,
+        );
+
+        let toggle_minified = self.format_dock_option(
+            "Toggle M. Styles".to_string(),
+            "'Shift' + 'M'".to_string(),
+            dock_width,
+        );
+
+        let toggle_naming = self.format_dock_option(
+            "Toggle A. Naming".to_string(),
+            "'Shift' + 'N'".to_string(),
+            dock_width,
+        );
+
+        let change_version = self.format_dock_option(
+            "Modify Version".to_string(),
+            "'Shift' + 'V'".to_string(),
+            dock_width,
+        );
+
+        let exclude = self.format_dock_option(
+            "Adjust Exclude".to_string(),
+            "'Shift' + 'E'".to_string(),
+            dock_width,
+        );
+
+        lines.push(configs_title);
+        lines.push(Line::from(Span::raw("")));
+        lines.push(toggle_reset);
+        lines.push(toggle_minified);
+        lines.push(toggle_naming);
+        lines.push(change_version);
+        lines.push(exclude);
+
+        lines
+    }
+
+    fn create_extra_options(&self, dock_width: u16) -> Vec<Line> {
+        let mut lines: Vec<Line> = vec![];
+
+        let configs_title = self.format_block_title(" Options".to_string(), dock_width);
+
+        let clear_alerts = self.format_dock_option(
+            "Clear All Alerts".to_string(),
+            "'Shift' + 'K'".to_string(),
+            dock_width,
+        );
+
+        let shortcuts = self.format_dock_option(
+            "View Shortcuts".to_string(),
+            "'Ctrl' + 'S'".to_string(),
+            dock_width,
+        );
+
+        let license = self.format_dock_option(
+            "View License".to_string(),
+            "'Ctrl' + 'L'".to_string(),
+            dock_width,
+        );
+
+        let about_author = self.format_dock_option(
+            "About the Author".to_string(),
+            "'Ctrl' + 'A'".to_string(),
+            dock_width,
+        );
+
+        let donation = self.format_dock_option(
+            "Make a Donation".to_string(),
+            "'Ctrl' + 'D'".to_string(),
+            dock_width,
+        );
+
+        let contribute = self.format_dock_option(
+            "Contribute as Dev".to_string(),
+            "'Ctrl' + 'T'".to_string(),
+            dock_width,
+        );
+
+        lines.push(configs_title);
+        lines.push(Line::from(Span::raw("")));
+        lines.push(clear_alerts);
+        lines.push(shortcuts);
+        lines.push(license);
+        lines.push(about_author);
+        lines.push(donation);
+        lines.push(contribute);
+
+        lines
+    }
+
+    fn create_separator(&self, dock_width: u16) -> Vec<Line> {
+        let mut lines: Vec<Line> = vec![];
+
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::raw(
+            "\u{25E6}".repeat(dock_width.saturating_sub(3) as usize),
+        )));
+        lines.push(Line::from(Span::raw("")));
+
+        lines
+    }
+
+    fn format_dock_settings(&self, dock_width: u16, configs: Configatron, port: u16) -> Vec<Line> {
+        let mut lines: Vec<Line> = vec![];
+
+        let mut configs_viewer = self.create_configs_viewer(dock_width, configs, port);
+        lines.append(&mut configs_viewer);
+
+        let mut configs_separator = self.create_separator(dock_width);
+        lines.append(&mut configs_separator);
+
+        let mut adjustment_options = self.create_adjustment_options(dock_width);
+        lines.append(&mut adjustment_options);
+
+        let mut adjustment_separator = self.create_separator(dock_width);
+        lines.append(&mut adjustment_separator);
+
+        let mut extra_options = self.create_extra_options(dock_width);
+        lines.append(&mut extra_options);
+
+        lines.push(Line::from(Span::raw("")));
+
+        lines
+    }
+
+    fn create_dock(&self, dock_width: u16, app: &mut ShellscapeApp) -> (Paragraph, usize) {
+        let lines: Vec<Line> = self.format_dock_settings(
+            dock_width,
+            app.get_configs(),
+            app.get_server_running_on_port(),
+        );
         let lines_len = lines.len();
         let element = Paragraph::new(lines)
             .bg(self.secondary_color)
@@ -496,6 +792,16 @@ impl ShellscapeWidgets {
     ) -> Vec<Line> {
         let mut lines: Vec<Line> = vec![];
 
+        if alerts.len() == 0 {
+            lines.push(
+                Line::from(vec![Span::styled(
+                    "There are currently no alerts to display at this time.",
+                    Style::default().fg(self.deep_teal_color),
+                )])
+                .alignment(Alignment::Center),
+            );
+        }
+
         for alert in alerts {
             match alert {
                 ShellscapeAlerts::GaladrielError { start_time, error } => {
@@ -579,7 +885,7 @@ impl ShellscapeWidgets {
         let dock = container[0];
         let table = container[1];
 
-        let _dock_width = dock.width;
+        let dock_width = dock.width;
         let textwrap_width = table.width.saturating_sub(10);
 
         let dock_are = ShellscapeArea::new(dock.left(), dock.right(), dock.top(), dock.bottom());
@@ -589,7 +895,7 @@ impl ShellscapeWidgets {
         app.reset_dock_area(dock_are);
         app.reset_table_area(table_area);
 
-        let (dock_element, dock_len) = self.create_dock(app);
+        let (dock_element, dock_len) = self.create_dock(dock_width, app);
 
         app.reset_dock_scroll_state(dock_len);
         frame.render_widget(dock_element, dock);

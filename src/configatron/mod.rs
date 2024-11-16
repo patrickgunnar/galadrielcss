@@ -205,6 +205,33 @@ impl Configatron {
 
         self.version.clone()
     }
+
+    pub fn toggle_reset_styles(&mut self) {
+        self.reset_styles = !self.reset_styles;
+    }
+
+    pub fn toggle_minified_styles(&mut self) {
+        self.minified_styles = !self.minified_styles;
+    }
+
+    pub fn toggle_auto_naming(&mut self) {
+        self.auto_naming = !self.auto_naming;
+    }
+
+    /*pub fn reset_version(&mut self, version: String) {
+        self.version = version;
+    }*/
+
+    pub fn generate_configs_json(&self) -> ConfigurationJson {
+        ConfigurationJson {
+            exclude: self.exclude.clone(),
+            auto_naming: self.auto_naming,
+            reset_styles: self.reset_styles,
+            minified_styles: self.minified_styles,
+            port: self.port.clone(),
+            version: self.version.clone(),
+        }
+    }
 }
 
 #[cfg(test)]

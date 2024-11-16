@@ -22,6 +22,7 @@ pub struct ShellscapeApp {
     pub metadata: ShellscapeMetadata,
     pub configs: Configatron,
     pub alerts: Vec<ShellscapeAlerts>,
+    pub server_running_on_port: u16,
 
     pub table_scroll_state: ScrollbarState,
     pub dock_scroll_state: ScrollbarState,
@@ -76,6 +77,7 @@ impl ShellscapeApp {
             dock_scroll_state: ScrollbarState::new(0),
             table_area: ShellscapeArea::new(0, 0, 0, 0),
             dock_area: ShellscapeArea::new(0, 0, 0, 0),
+            server_running_on_port: 0,
             table_vertical_axis: 0,
             dock_vertical_axis: 0,
             table_scroll_len: 0,
@@ -127,6 +129,10 @@ impl ShellscapeApp {
         self.alerts.clear();
     }
 
+    pub fn reset_server_running_on_port(&mut self, port: u16) {
+        self.server_running_on_port = port;
+    }
+
     pub fn reset_configs_state(&mut self, configs: Configatron) {
         info!("Resetting Galadriel configurations in ShellscapeApp.");
         debug!("Old configurations: {:?}", self.configs);
@@ -139,8 +145,16 @@ impl ShellscapeApp {
         self.metadata.reset_subtitle(subtitle);
     }
 
+    pub fn get_server_running_on_port(&self) -> u16 {
+        self.server_running_on_port
+    }
+
     pub fn get_alerts(&self) -> Vec<ShellscapeAlerts> {
         self.alerts.clone()
+    }
+
+    pub fn get_configs(&self) -> Configatron {
+        self.configs.clone()
     }
 
     pub fn get_author(&self) -> String {
@@ -235,6 +249,41 @@ impl ShellscapeApp {
 
         self.dock_vertical_axis = result;
         self.dock_scroll_state = self.dock_scroll_state.position(result as usize);
+    }
+
+    pub fn add_shortcut_alert(&mut self) {
+        self.add_alert(ShellscapeAlerts::create_information(
+            Local::now(),
+            "Display shortcuts",
+        ));
+    }
+
+    pub fn add_license_alert(&mut self) {
+        self.add_alert(ShellscapeAlerts::create_information(
+            Local::now(),
+            "Display license",
+        ));
+    }
+
+    pub fn add_donation_alert(&mut self) {
+        self.add_alert(ShellscapeAlerts::create_information(
+            Local::now(),
+            "Display donation",
+        ));
+    }
+
+    pub fn add_contribute_alert(&mut self) {
+        self.add_alert(ShellscapeAlerts::create_information(
+            Local::now(),
+            "Display contribute",
+        ));
+    }
+
+    pub fn add_about_author_alert(&mut self) {
+        self.add_alert(ShellscapeAlerts::create_information(
+            Local::now(),
+            "Display about the author",
+        ));
     }
 }
 

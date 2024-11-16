@@ -12,7 +12,7 @@ use nenyr::error::{NenyrError, NenyrErrorTracing};
 use shellscape::{
     alerts::ShellscapeAlerts, app::ShellscapeApp, commands::ShellscapeCommands, Shellscape,
 };
-use tokio::{net::TcpListener, sync::RwLock};
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -155,6 +155,8 @@ impl GaladrielRuntime {
         let atomically_matcher = Arc::new(RwLock::new(matcher));
         let _observer_handler = observer.start(Arc::clone(&atomically_matcher)); // Start observing file changes
 
+        // Set the running port.
+        shellscape_app.reset_server_running_on_port(running_on_port);
         // Register the pipeline's server port in temporary storage.
         pipeline.register_server_port_in_temp(running_on_port)?;
         // Start the Shellscape terminal interface rendering.
@@ -271,6 +273,51 @@ impl GaladrielRuntime {
                                 }
                                 ShellscapeCommands::ScrollDockDown => {
                                     shellscape_app.reset_dock_scroll_up();
+                                }
+                                ShellscapeCommands::ToggleResetStyles => {
+                                    self.configatron.toggle_reset_styles();
+
+                                    if let Err(err) = self.replace_configurations_file().await {
+                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                    }
+                                }
+                                ShellscapeCommands::ToggleMinifiedStyles => {
+                                    self.configatron.toggle_minified_styles();
+
+                                    if let Err(err) = self.replace_configurations_file().await {
+                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                    }
+                                }
+                                ShellscapeCommands::ToggleAutoNaming => {
+                                    self.configatron.toggle_auto_naming();
+
+                                    if let Err(err) = self.replace_configurations_file().await {
+                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                    }
+                                }
+                                ShellscapeCommands::ModifyVersion => {
+                                    shellscape_app.add_alert(ShellscapeAlerts::create_information(Local::now(), "Selected 'Modify Version'"));
+                                }
+                                ShellscapeCommands::AdjustExclude => {
+                                    shellscape_app.add_alert(ShellscapeAlerts::create_information(Local::now(), "Selected 'Adjust Exclude'"));
+                                }
+                                ShellscapeCommands::ClearAlertsTable => {
+                                    shellscape_app.clear_alerts();
+                                }
+                                ShellscapeCommands::VewShortcuts => {
+                                    shellscape_app.add_shortcut_alert();
+                                }
+                                ShellscapeCommands::ViewLicense => {
+                                    shellscape_app.add_license_alert();
+                                }
+                                ShellscapeCommands::MakeDonation => {
+                                    shellscape_app.add_donation_alert();
+                                }
+                                ShellscapeCommands::ContributeAsDev => {
+                                    shellscape_app.add_contribute_alert();
+                                }
+                                ShellscapeCommands::AboutAuthor => {
+                                    shellscape_app.add_about_author_alert();
                                 }
                                 ShellscapeCommands::ScrollUp { column, row } => {
                                     // Get the current areas for the dock and alerts
@@ -570,6 +617,46 @@ impl GaladrielRuntime {
                 Configatron::new(vec![], true, true, true, "0".to_string(), "*".to_string());
 
             tracing::warn!("Galadriel CSS is starting with default configurations as `galadriel.config.json` was not found in the root directory.");
+        }
+
+        Ok(())
+    }
+
+    async fn replace_configurations_file(&mut self) -> GaladrielResult<()> {
+        let configs_json = self.configatron.generate_configs_json();
+        let config_path = self.working_dir.join("galadriel.config.json");
+
+        match OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(config_path)
+            .await
+        {
+            Ok(mut file) => match serde_json::to_vec_pretty(&configs_json) {
+                Ok(bytes) => {
+                    if let Err(err) = file.write_all(&bytes).await {
+                        return Err(GaladrielError::raise_general_runtime_error(
+                            ErrorKind::GaladrielConfigFileWriteError,
+                            &err.to_string(),
+                            ErrorAction::Notify,
+                        ));
+                    }
+                }
+                Err(err) => {
+                    return Err(GaladrielError::raise_general_runtime_error(
+                        ErrorKind::GaladrielConfigSerdeSerializationError,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    ));
+                }
+            },
+            Err(err) => {
+                return Err(GaladrielError::raise_general_runtime_error(
+                    ErrorKind::GaladrielConfigOpenFileError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                ));
+            }
         }
 
         Ok(())

@@ -20,6 +20,17 @@ pub enum ShellscapeCommands {
         column: u16,
         row: u16,
     },
+    ClearAlertsTable,
+    VewShortcuts,
+    ViewLicense,
+    MakeDonation,
+    ContributeAsDev,
+    AboutAuthor,
+    ToggleResetStyles,
+    ToggleMinifiedStyles,
+    ToggleAutoNaming,
+    ModifyVersion,
+    AdjustExclude,
 }
 
 impl ShellscapeCommands {
@@ -48,6 +59,50 @@ impl ShellscapeCommands {
             KeyCode::Char('c') | KeyCode::Char('C') if event.modifiers == KeyModifiers::CONTROL => {
                 info!("Received termination command via `Ctrl+C`");
                 ShellscapeCommands::Terminate
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Toggling reset styles...");
+                ShellscapeCommands::ToggleResetStyles
+            }
+            KeyCode::Char('m') | KeyCode::Char('M') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Toggling minified styles...");
+                ShellscapeCommands::ToggleMinifiedStyles
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Toggling auto-naming feature...");
+                ShellscapeCommands::ToggleAutoNaming
+            }
+            KeyCode::Char('v') | KeyCode::Char('V') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Modifying version configuration...");
+                ShellscapeCommands::ModifyVersion
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Adjusting exclusion settings...");
+                ShellscapeCommands::AdjustExclude
+            }
+            KeyCode::Char('k') | KeyCode::Char('K') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Clearing all alerts...");
+                ShellscapeCommands::ClearAlertsTable
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') if event.modifiers == KeyModifiers::CONTROL => {
+                info!("Displaying shortcut guide...");
+                ShellscapeCommands::VewShortcuts
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') if event.modifiers == KeyModifiers::CONTROL => {
+                info!("Opening license information...");
+                ShellscapeCommands::ViewLicense
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') if event.modifiers == KeyModifiers::CONTROL => {
+                info!("Displaying donation guide...");
+                ShellscapeCommands::MakeDonation
+            }
+            KeyCode::Char('t') | KeyCode::Char('T') if event.modifiers == KeyModifiers::CONTROL => {
+                info!("Opening contribution information for developers...");
+                ShellscapeCommands::ContributeAsDev
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') if event.modifiers == KeyModifiers::CONTROL => {
+                info!("Displaying author information...");
+                ShellscapeCommands::AboutAuthor
             }
             KeyCode::Up if event.modifiers == KeyModifiers::CONTROL => {
                 ShellscapeCommands::ScrollNotificationsUp

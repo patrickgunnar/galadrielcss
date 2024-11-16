@@ -502,6 +502,9 @@ pub enum ErrorKind {
     NenyrSyntaxIntegrationFailed,
     NenyrSyntaxMissing,
     NenyrSyntaxHighlightingError,
+    GaladrielConfigOpenFileError,
+    GaladrielConfigSerdeSerializationError,
+    GaladrielConfigFileWriteError,
     Other,
 }
 
