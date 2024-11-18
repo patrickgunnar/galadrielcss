@@ -17,7 +17,7 @@ pub mod alerts;
 pub mod app;
 mod area;
 pub mod commands;
-mod events;
+pub mod events;
 mod metadata;
 mod ui;
 mod widgets;

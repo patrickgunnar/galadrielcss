@@ -295,12 +295,6 @@ impl GaladrielRuntime {
                                         shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
-                                ShellscapeCommands::ModifyVersion => {
-                                    shellscape_app.add_alert(ShellscapeAlerts::create_information(Local::now(), "Selected 'Modify Version'"));
-                                }
-                                ShellscapeCommands::AdjustExclude => {
-                                    shellscape_app.add_alert(ShellscapeAlerts::create_information(Local::now(), "Selected 'Adjust Exclude'"));
-                                }
                                 ShellscapeCommands::ClearAlertsTable => {
                                     shellscape_app.clear_alerts();
                                 }

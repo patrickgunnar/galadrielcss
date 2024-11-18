@@ -5,6 +5,15 @@ use crate::error::GaladrielError;
 
 #[allow(dead_code)]
 #[derive(Clone, PartialEq, Debug)]
+pub enum AlertTextType {
+    Donation,
+    License,
+    AboutAuthor,
+    ContributeAsDev,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ShellscapeAlerts {
     Success {
         start_time: DateTime<Local>,
@@ -27,6 +36,16 @@ pub enum ShellscapeAlerts {
     GaladrielError {
         start_time: DateTime<Local>,
         error: GaladrielError,
+    },
+    Shortcuts {
+        start_time: DateTime<Local>,
+        shortcuts: Vec<(String, String)>,
+    },
+    Text {
+        start_time: DateTime<Local>,
+        title: String,
+        content: Vec<String>,
+        kind: AlertTextType,
     },
 }
 
@@ -66,5 +85,26 @@ impl ShellscapeAlerts {
 
     pub fn create_galadriel_error(start_time: DateTime<Local>, error: GaladrielError) -> Self {
         ShellscapeAlerts::GaladrielError { start_time, error }
+    }
+
+    pub fn create_text(
+        kind: AlertTextType,
+        start_time: DateTime<Local>,
+        title: &str,
+        content: Vec<String>,
+    ) -> Self {
+        ShellscapeAlerts::Text {
+            start_time,
+            title: title.to_string(),
+            content,
+            kind,
+        }
+    }
+
+    pub fn create_shortcuts(start_time: DateTime<Local>, shortcuts: Vec<(String, String)>) -> Self {
+        ShellscapeAlerts::Shortcuts {
+            start_time,
+            shortcuts,
+        }
     }
 }
