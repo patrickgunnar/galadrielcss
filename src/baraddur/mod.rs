@@ -426,7 +426,9 @@ impl BaraddurObserver {
             );
         }
 
-        // TODO: Parse the Nenyr content.
+        if let Err(err) = observer_sender.send(GaladrielEvents::Parse(path.clone())) {
+            error!("Something went wrong while sending the current Nenyr path to the main runtime. Error: {:?}", err);
+        }
 
         let ending_time = Local::now();
         let duration = ending_time - start_time;
@@ -492,8 +494,7 @@ mod tests {
     async fn test_next_receives_event() {
         let mut observer = BaraddurObserver::new(PathBuf::from("."), 250);
         let sender = observer.observer_sender.clone();
-        let notification =
-            ShellscapeAlerts::create_information(Local::now(), "Test message");
+        let notification = ShellscapeAlerts::create_information(Local::now(), "Test message");
 
         // Send an event from the sender side.
         let expected_event = GaladrielEvents::Notify(notification);

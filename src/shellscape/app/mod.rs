@@ -163,6 +163,11 @@ impl ShellscapeApp {
         lines
     }
 
+    pub fn add_alerts_vec(&mut self, alerts: &mut Vec<ShellscapeAlerts>) {
+        alerts.append(&mut self.alerts);
+        self.alerts = alerts.to_vec();
+    }
+
     /// Adds a new alert to the application.
     ///
     /// Alerts are added at the beginning of the alerts vector.

@@ -5,6 +5,7 @@ use chrono::{DateTime, Local};
 use configatron::{Configatron, ConfigurationJson};
 use error::{ErrorAction, ErrorKind, GaladrielError};
 use events::GaladrielEvents;
+use formera::Formera;
 use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
@@ -20,11 +21,15 @@ use tracing_subscriber::FmtSubscriber;
 mod asts;
 mod baraddur;
 mod configatron;
+mod crealion;
 pub mod error;
 mod events;
+mod formera;
 mod kickstartor;
 mod lothlorien;
 mod shellscape;
+mod types;
+mod utils;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum GaladrielRuntimeKind {
@@ -395,6 +400,27 @@ impl GaladrielRuntime {
             // If a notification event is received, add it directly to the Shellscape app.
             GaladrielEvents::Notify(notification) => {
                 shellscape_app.add_alert(notification);
+            }
+            GaladrielEvents::Parse(path) => {
+                let mut formera = Formera::new(path, self.configatron.get_auto_naming());
+
+                match formera.start().await.as_mut() {
+                    Ok(result) => {
+                        shellscape_app.add_alerts_vec(result);
+                    }
+                    Err(GaladrielError::NenyrError { start_time, error }) => {
+                        shellscape_app.add_alert(ShellscapeAlerts::create_nenyr_error(
+                            start_time.to_owned(),
+                            error.to_owned(),
+                        ));
+                    }
+                    Err(err) => {
+                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
+                            Local::now(),
+                            err.to_owned(),
+                        ));
+                    }
+                }
             }
             // Handle reloading of Galadriel configuration when requested by the event.
             GaladrielEvents::ReloadGaladrielConfigs => {

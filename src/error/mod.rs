@@ -1,5 +1,7 @@
 use std::fmt;
 
+use chrono::{DateTime, Local};
+use nenyr::error::NenyrError;
 use tracing::error;
 
 /// Enum representing errors in the Galadriel system. It can be either a `CriticalError` or a `GeneralError`,
@@ -10,6 +12,10 @@ pub enum GaladrielError {
     CriticalError(GaladrielErrorType),
     /// A general error, usually representing non-fatal issues that can be handled more gracefully.
     GeneralError(GaladrielErrorType),
+    NenyrError {
+        start_time: DateTime<Local>,
+        error: NenyrError,
+    },
 }
 
 impl fmt::Display for GaladrielError {
@@ -53,6 +59,7 @@ impl GaladrielError {
         match self {
             GaladrielError::CriticalError(err) => err.get_action(),
             GaladrielError::GeneralError(err) => err.get_action(),
+            GaladrielError::NenyrError { .. } => ErrorAction::Fix,
         }
     }
 
@@ -64,6 +71,7 @@ impl GaladrielError {
         match self {
             GaladrielError::CriticalError(err) => err.get_message(),
             GaladrielError::GeneralError(err) => err.get_message(),
+            GaladrielError::NenyrError { error, .. } => error.get_error_message(),
         }
     }
 
@@ -75,6 +83,7 @@ impl GaladrielError {
         match self {
             GaladrielError::CriticalError(err) => err.get_kind(),
             GaladrielError::GeneralError(err) => err.get_kind(),
+            GaladrielError::NenyrError { .. } => ErrorKind::NenyrError,
         }
     }
 
@@ -86,6 +95,7 @@ impl GaladrielError {
         match self {
             GaladrielError::CriticalError(err) => err.get_type(),
             GaladrielError::GeneralError(err) => err.get_type(),
+            GaladrielError::NenyrError { .. } => ErrorType::OtherError,
         }
     }
 
@@ -330,6 +340,10 @@ impl GaladrielError {
             action,
         })
     }
+
+    pub fn raise_nenyr_error(start_time: DateTime<Local>, error: NenyrError) -> Self {
+        GaladrielError::NenyrError { start_time, error }
+    }
 }
 
 /// The `GaladrielErrorType` enum represents various types of errors that can occur in the application.
@@ -443,6 +457,7 @@ pub enum ErrorAction {
     /// Notify the user or system administrator of the error.
     Notify,
     Exit,
+    Fix,
 }
 
 /// The `ErrorType` enum categorizes errors into distinct types for easier identification.
@@ -505,6 +520,10 @@ pub enum ErrorKind {
     GaladrielConfigOpenFileError,
     GaladrielConfigSerdeSerializationError,
     GaladrielConfigFileWriteError,
+    NenyrError,
+    FileReadMaxRetriesExceeded,
+    FileReadFailed,
+    TaskFailure,
     Other,
 }
 
