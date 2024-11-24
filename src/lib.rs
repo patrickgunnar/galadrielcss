@@ -402,11 +402,30 @@ impl GaladrielRuntime {
                 shellscape_app.add_alert(notification);
             }
             GaladrielEvents::Parse(path) => {
+                let start_time = Local::now();
+                let stringified_path = path.to_string_lossy().to_string();
+                let notification = ShellscapeAlerts::create_information(
+                    start_time,
+                    &format!("Initiating parsing of: {:?}", stringified_path),
+                );
+
+                shellscape_app.add_alert(notification);
+
                 let mut formera = Formera::new(path, self.configatron.get_auto_naming());
 
-                match formera.start().await.as_mut() {
-                    Ok(result) => {
-                        shellscape_app.add_alerts_vec(result);
+                match formera.start().await {
+                    Ok(alerts) => {
+                        let ending_time = Local::now();
+                        let duration = ending_time - start_time;
+                        let notification = ShellscapeAlerts::create_success(
+                            start_time,
+                            ending_time,
+                            duration,
+                            &format!("Successfully parsed Nenyr file: {:?}", stringified_path),
+                        );
+
+                        shellscape_app.add_alerts_vec(&mut alerts.to_vec());
+                        shellscape_app.add_alert(notification);
                     }
                     Err(GaladrielError::NenyrError { start_time, error }) => {
                         shellscape_app.add_alert(ShellscapeAlerts::create_nenyr_error(

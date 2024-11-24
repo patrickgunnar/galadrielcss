@@ -413,40 +413,8 @@ impl BaraddurObserver {
     }
 
     async fn process_nenyr_file(observer_sender: UnboundedSender<GaladrielEvents>, path: &PathBuf) {
-        let start_time = Local::now();
-        let notification = ShellscapeAlerts::create_information(
-            start_time,
-            &format!("Initiating parsing of: {:?}", path.to_string_lossy()),
-        );
-
-        if let Err(err) = observer_sender.send(GaladrielEvents::Notify(notification)) {
-            error!(
-                "Unable to notify runtime: parsing event for {:?} failed. Error: {:?}",
-                path, err
-            );
-        }
-
         if let Err(err) = observer_sender.send(GaladrielEvents::Parse(path.clone())) {
             error!("Something went wrong while sending the current Nenyr path to the main runtime. Error: {:?}", err);
-        }
-
-        let ending_time = Local::now();
-        let duration = ending_time - start_time;
-        let notification = ShellscapeAlerts::create_success(
-            start_time,
-            ending_time,
-            duration,
-            &format!(
-                "Successfully parsed Nenyr file: {:?}",
-                path.to_string_lossy()
-            ),
-        );
-
-        if let Err(err) = observer_sender.send(GaladrielEvents::Notify(notification)) {
-            error!(
-                "Failed to notify main runtime of parse completion for {:?}. Error: {:?}",
-                path, err
-            );
         }
     }
 }

@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use chrono::Local;
 use nenyr::NenyrParser;
 
-use crate::{crealion::Crealion, error::GaladrielError, shellscape::alerts::ShellscapeAlerts, utils::resilient_reader::resilient_reader, GaladrielResult};
+use crate::{
+    crealion::Crealion, error::GaladrielError, shellscape::alerts::ShellscapeAlerts,
+    utils::resilient_reader::resilient_reader, GaladrielResult,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Formera {
@@ -31,13 +34,12 @@ impl Formera {
 
         let mut crealion = Crealion::new(parsed_ast, path.into());
 
-        match crealion.create().await.as_mut() {
-            Ok((Some(alerts_a), None)) => {
-                alerts.append(alerts_a);
+        match crealion.create().await {
+            Ok((Some(my_alerts), None)) => {
+                alerts.append(&mut my_alerts.to_vec());
             }
             _ => {}
         }
-        //let result = 
 
         Ok(alerts)
     }

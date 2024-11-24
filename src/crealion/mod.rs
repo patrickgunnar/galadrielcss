@@ -1,4 +1,5 @@
 use chrono::Local;
+use class::types::Class;
 use futures::future::join_all;
 use nenyr::types::{
     ast::NenyrAst, central::CentralContext, layout::LayoutContext, module::ModuleContext,
@@ -11,6 +12,7 @@ use crate::{
 };
 
 mod class;
+mod mocks;
 mod processors;
 mod utils;
 
@@ -45,33 +47,45 @@ impl Crealion {
     pub async fn init_central_collector(&mut self, context: &CentralContext) -> CrealionResult {
         let inherited_contexts: Vec<String> = vec![self.central_context_identifier.clone()];
 
-        let classes = match &context.classes {
-            Some(classes) => classes
-                .iter()
-                .map(|(_, class)| self.process_class(inherited_contexts.clone(), class.to_owned()))
-                .collect(),
-            None => vec![],
-        };
+        let classes_futures = context.classes.as_ref().map_or_else(
+            || vec![],
+            |classes| {
+                classes
+                    .iter()
+                    .map(|(_, class)| {
+                        self.process_class(inherited_contexts.to_vec(), class.to_owned())
+                    })
+                    .collect::<Vec<_>>()
+            },
+        );
 
-        let mut content = join_all(classes).await;
+        let classes_results = join_all(classes_futures).await;
+        let _classes: Vec<Class> = classes_results
+            .iter()
+            .filter_map(|result| match result {
+                Ok((class, alerts)) => {
+                    self.alerts.append(&mut alerts.to_vec());
 
-        for c in content.iter_mut() {
-            match c {
-                Ok(alerts) => {
-                    self.alerts.append(alerts);
+                    Some(class.to_owned())
                 }
                 Err(err) => {
                     self.alerts.push(ShellscapeAlerts::create_galadriel_error(
                         Local::now(),
                         GaladrielError::raise_general_other_error(
-                            ErrorKind::Other,
+                            ErrorKind::TaskFailure,
                             &err.to_string(),
                             ErrorAction::Notify,
                         ),
                     ));
+
+                    None
                 }
-            }
-        }
+            })
+            .collect();
+
+        // TODO: Create the set classes methods.
+
+        //println!("{:#?}", classes);
 
         Ok((Some(self.alerts.clone()), None))
     }

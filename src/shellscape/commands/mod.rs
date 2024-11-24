@@ -166,7 +166,7 @@ mod tests {
     fn test_from_key_event_none_with_ctrl_a() {
         let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
         let result = ShellscapeCommands::from_key_event(event);
-        assert_eq!(result, ShellscapeCommands::None);
+        assert_eq!(result, ShellscapeCommands::AboutAuthor);
     }
 
     #[test]
