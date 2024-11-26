@@ -25,6 +25,11 @@ impl BreakpointProcessor {
     /// # Returns
     /// - A new instance of `BreakpointProcessor`.
     pub fn new(breakpoint: &str) -> Self {
+        tracing::info!(
+            "Initializing BreakpointProcessor with breakpoint: '{}'",
+            breakpoint
+        );
+
         Self {
             breakpoint: breakpoint.to_string(),
         }
@@ -40,52 +45,54 @@ impl BreakpointProcessor {
     /// - `Some(String)`: The formatted breakpoint value if a match is found.
     /// - `None`: If the breakpoint could not be resolved in any schema.
     pub fn process(&self) -> Option<String> {
+        tracing::info!(
+            "Processing breakpoint: '{}'. Attempting to resolve from schemas.",
+            self.breakpoint
+        );
+
         // Access the "breakpoints" node in the STYLITRON data structure.
         STYLITRON
             .get("breakpoints")
             .and_then(|stylitron_data| match &*stylitron_data {
                 // If the data is of type `Breakpoints`, proceed with processing.
                 Stylitron::Breakpoints(breakpoints_definitions) => {
+                    tracing::debug!(
+                        "Breakpoints definitions found. Searching schemas for breakpoint '{}'.",
+                        self.breakpoint
+                    );
+
                     // Iterate over the schemas to find a matching breakpoint.
                     SCHEMAS.iter().find_map(|schema| {
+                        tracing::debug!("Checking schema: '{}'", schema);
+
                         // Retrieve the schema-specific breakpoints definitions.
                         breakpoints_definitions.get(&schema.to_string()).and_then(
                             |schema_breakpoints| {
+                                tracing::debug!(
+                                    "Schema '{}' contains breakpoint definitions. Checking for match with '{}'.",
+                                    schema,
+                                    self.breakpoint
+                                );
+
                                 // Attempt to resolve and format the breakpoint value.
-                                schema_breakpoints.get(&self.breakpoint).and_then(
-                                    |breakpoint_entry| {
-                                        self.format_breakpoint_value(breakpoint_entry, schema)
-                                    },
-                                )
+                                schema_breakpoints
+                                    .get(&self.breakpoint)
+                                    .and_then(|breakpoint_entry| {
+                                        tracing::info!(
+                                            "Breakpoint '{}' resolved in schema '{}': '{}'",
+                                            self.breakpoint,
+                                            schema,
+                                            breakpoint_entry
+                                        );
+
+                                        Some(breakpoint_entry.to_owned())
+                                    })
                             },
                         )
                     })
                 }
                 _ => None, // If the node is not of type `Breakpoints`, return `None`.
             })
-    }
-
-    /// Formats the resolved breakpoint value based on the schema type.
-    ///
-    /// For "mobile-first" schemas, the breakpoint is formatted as `min-width`,
-    /// and for "desktop-first" schemas, it is formatted as `max-width`.
-    ///
-    /// # Arguments
-    /// - `breakpoint_entry`: The raw breakpoint value (e.g., "768px").
-    /// - `schema`: The schema type, either "mobile-first" or "desktop-first".
-    ///
-    /// # Returns
-    /// - `Some(String)`: The formatted breakpoint value.
-    /// - `None`: If the schema type is unsupported.
-    fn format_breakpoint_value(&self, breakpoint_entry: &str, schema: &str) -> Option<String> {
-        match schema {
-            // Format as `min-width` for "mobile-first" schemas.
-            "mobile-first" => Some(format!("min-width:{}", breakpoint_entry)),
-            // Format as `max-width` for "desktop-first" schemas.
-            "desktop-first" => Some(format!("max-width:{}", breakpoint_entry)),
-            // Return `None` for unsupported schema types.
-            _ => None,
-        }
     }
 }
 

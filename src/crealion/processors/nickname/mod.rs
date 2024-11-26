@@ -20,6 +20,11 @@ impl NicknameProcessor {
     /// # Returns
     /// - A new instance of `NicknameProcessor`.
     pub fn new(inherited_contexts: Vec<String>) -> Self {
+        tracing::info!(
+            "Initializing NicknameProcessor with inherited contexts: {:?}",
+            inherited_contexts
+        );
+
         Self { inherited_contexts }
     }
 
@@ -35,22 +40,47 @@ impl NicknameProcessor {
     /// - `Some(String)`: The resolved property if found.
     /// - `None`: If the alias could not be resolved in any context.
     pub fn process(&self, nickname: &str) -> Option<String> {
+        tracing::info!(
+            "Processing alias: '{}'. Checking contexts: {:?}",
+            nickname,
+            self.inherited_contexts
+        );
+
         // Access the "aliases" node in the STYLITRON data structure.
         STYLITRON
             .get("aliases")
             .and_then(|stylitron_data| match &*stylitron_data {
                 // If the data is of type `Aliases`, proceed with processing.
                 Stylitron::Aliases(aliases_definitions) => {
+                    tracing::debug!("Aliases definitions found. Searching contexts for alias '{}'.", nickname);
+
                     // Iterate over the inherited contexts to find a matching alias.
                     self.inherited_contexts.iter().find_map(|context_name| {
+                        tracing::debug!("Checking context: '{}'", context_name);
+
                         // Retrieve the context-specific alias definitions.
                         aliases_definitions
                             .get(context_name)
                             .and_then(|context_aliases| {
+                                tracing::debug!(
+                                    "Context '{}' contains alias definitions. Checking for match with '{}'.",
+                                    context_name,
+                                    nickname
+                                );
+
                                 // Attempt to resolve the property for the provided alias.
                                 context_aliases
                                     .get(nickname)
-                                    .and_then(|alias_entry| Some(alias_entry.to_owned()))
+                                    .and_then(|alias_entry| {
+                                        tracing::info!(
+                                            "Alias '{}' resolved in context '{}': '{}'",
+                                            nickname,
+                                            context_name,
+                                            alias_entry
+                                        );
+
+                                        Some(alias_entry.to_owned())
+                                    })
                             })
                     })
                 }

@@ -27,6 +27,7 @@ impl Crealion {
     /// - A vector of `UtilityClass` objects for the generated styles.
     /// - A vector of `ShellscapeAlerts` containing any alerts or warnings.
     /// - A vector of strings with the names of the generated utility classes.
+    #[tracing::instrument(level = "info", skip(responsive_patterns))]
     pub fn process_responsive_styles(
         inherited_contexts: Vec<String>,
         class_name: String,
@@ -35,6 +36,11 @@ impl Crealion {
     ) -> JoinHandle<(Vec<UtilityClass>, Vec<ShellscapeAlerts>, Vec<String>)> {
         // Spawn an asynchronous task using `tokio::spawn`.
         tokio::spawn(async move {
+            tracing::info!(
+                "Starting process_responsive_styles for class: {}",
+                class_name
+            );
+
             // Initialize a mutable vector to collect alerts.
             let mut alerts: Vec<ShellscapeAlerts> = vec![];
             // Initialize a mutable vector to collect utility classes.
@@ -45,6 +51,12 @@ impl Crealion {
             // Check if responsive patterns are provided.
             match responsive_patterns {
                 Some(patterns) => {
+                    tracing::debug!(
+                        "Processing {} responsive patterns for class: {}",
+                        patterns.len(),
+                        class_name
+                    );
+
                     // Process each breakpoint and its associated style patterns.
                     Self::match_style_breakpoint(
                         &inherited_contexts, // Pass inherited contexts as reference.
@@ -57,8 +69,21 @@ impl Crealion {
                     )
                     .await; // Await the asynchronous processing.
                 }
-                _ => {}
+                _ => {
+                    tracing::warn!(
+                        "No responsive patterns provided for class: {}. Skipping processing.",
+                        class_name
+                    );
+                }
             }
+
+            tracing::info!(
+                "Finished processing styles for class: {}. Generated {} utility classes, {} alerts, and {} utility names.",
+                class_name,
+                classes.len(),
+                alerts.len(),
+                utility_names.len()
+            );
 
             // Return the collected utility classes, alerts, and utility class names as a tuple.
             (classes, alerts, utility_names)
@@ -81,6 +106,10 @@ impl Crealion {
     ///   - The outer key is the breakpoint.
     ///   - The inner map key is the pattern.
     ///   - The innermost map contains property-value pairs.
+    #[tracing::instrument(
+        level = "debug",
+        skip(alerts, classes, utility_names, responsive_patterns)
+    )]
     async fn match_style_breakpoint(
         inherited_contexts: &Vec<String>,
         class_name: &String,
@@ -90,21 +119,44 @@ impl Crealion {
         utility_names: &mut Vec<String>,
         responsive_patterns: IndexMap<String, IndexMap<String, IndexMap<String, String>>>,
     ) {
+        tracing::debug!(
+            "Starting match_style_breakpoint for class: {} with {} breakpoints.",
+            class_name,
+            responsive_patterns.len()
+        );
+
         // Iterate over each breakpoint and its associated patterns.
         for (breakpoint, patterns) in responsive_patterns {
+            tracing::trace!(
+                "Processing breakpoint: {} with {} style patterns.",
+                breakpoint,
+                patterns.len()
+            );
+
             // Match and process styles for the current breakpoint.
             Self::match_style_patterns(
-                inherited_contexts, // Pass inherited contexts as reference.
-                Some(breakpoint),   // Specify the current breakpoint.
-                class_name,         // Pass the class name as reference.
-                is_important,       // Propagate the `!important` flag.
-                alerts,             // Collect alerts during processing.
-                classes,            // Collect generated utility classes.
-                utility_names,      // Collect utility class names.
-                patterns,           // Provide the style patterns for the breakpoint.
+                inherited_contexts,          // Pass inherited contexts as reference.
+                Some(breakpoint.to_owned()), // Specify the current breakpoint.
+                class_name,                  // Pass the class name as reference.
+                is_important,                // Propagate the `!important` flag.
+                alerts,                      // Collect alerts during processing.
+                classes,                     // Collect generated utility classes.
+                utility_names,               // Collect utility class names.
+                patterns,                    // Provide the style patterns for the breakpoint.
             )
             .await; // Await the asynchronous matching process.
+
+            tracing::trace!(
+                "Finished processing breakpoint: {} for class: {}.",
+                breakpoint,
+                class_name
+            );
         }
+
+        tracing::debug!(
+            "Completed match_style_breakpoint for class: {}.",
+            class_name
+        );
     }
 }
 

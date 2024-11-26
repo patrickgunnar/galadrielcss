@@ -199,17 +199,17 @@ pub(crate) mod test_helpers {
             (
                 "mobile-first".to_string(),
                 IndexMap::from([
-                    ("myMob01".to_string(), "430px".to_string()),
-                    ("myMob02".to_string(), "720px".to_string()),
-                    ("myMob03".to_string(), "1024px".to_string()),
+                    ("myMob01".to_string(), "min-width:430px".to_string()),
+                    ("myMob02".to_string(), "min-width:720px".to_string()),
+                    ("myMob03".to_string(), "min-width:1024px".to_string()),
                 ]),
             ),
             (
                 "desktop-first".to_string(),
                 IndexMap::from([
-                    ("myDesk01".to_string(), "430px".to_string()),
-                    ("myDesk02".to_string(), "720px".to_string()),
-                    ("myDesk03".to_string(), "1024px".to_string()),
+                    ("myDesk01".to_string(), "max-width:430px".to_string()),
+                    ("myDesk02".to_string(), "max-width:720px".to_string()),
+                    ("myDesk03".to_string(), "max-width:1024px".to_string()),
                 ]),
             ),
         ]);

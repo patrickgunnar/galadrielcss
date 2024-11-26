@@ -149,7 +149,7 @@ impl Shellscape {
                 ShellscapeCommands::from_key_event(key)
             }
             ShellscapeTerminalEvents::Mouse(event) => {
-                info!("Processing mouse event: {:?}", event);
+                //info!("Processing mouse event: {:?}", event);
                 ShellscapeCommands::from_mouse_event(event)
             }
             // If the event is unrecognized, log a warning and return None

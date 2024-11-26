@@ -3,6 +3,7 @@ use futures::future::join_all;
 use indexmap::IndexMap;
 use nenyr::types::class::NenyrStyleClass;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, instrument, trace, warn};
 use types::{Class, UtilityClass};
 
 use crate::{
@@ -45,6 +46,7 @@ impl Crealion {
     /// A `JoinHandle` that resolves to a tuple containing:
     /// - `Class`: The processed class with its associated styles and utility names.
     /// - `Vec<ShellscapeAlerts>`: A list of alerts or warnings encountered during processing.
+    #[instrument(level = "info", skip(self, inherited_contexts, class), fields(class_name = %class.class_name))]
     pub fn process_class(
         &self,
         inherited_contexts: Vec<String>,
@@ -52,6 +54,8 @@ impl Crealion {
     ) -> JoinHandle<(Class, Vec<ShellscapeAlerts>)> {
         // Spawn an asynchronous task using `tokio::task::spawn`.
         tokio::task::spawn(async move {
+            info!("Starting processing for class: {}", class.class_name);
+
             // Initialize a vector to collect alerts.
             let mut alerts = vec![];
             // Clone the class name for processing.
@@ -66,19 +70,21 @@ impl Crealion {
             // and any derivation information.
             let mut my_class = Class::new(&class_name, class.deriving_from);
 
+            debug!("Processing non-responsive and responsive styles concurrently");
+
             // Process non-responsive and responsive styles concurrently.
             let results = join_all(vec![
                 // Collect non-responsive styles.
                 Self::collect_non_responsive_styles(
-                    inherited_contexts.clone(),      // Clone the inherited contexts.
-                    class_name.clone(),              // Clone the class name.
+                    inherited_contexts.to_owned(),   // Clone the inherited contexts.
+                    class_name.to_owned(),           // Clone the class name.
                     is_important,                    // Pass the `!important` flag.
                     class.style_patterns.to_owned(), // Clone style patterns.
                 ),
                 // Process responsive styles.
                 Self::process_responsive_styles(
                     inherited_contexts,                   // Pass inherited contexts.
-                    class_name,                           // Pass the class name.
+                    class_name.to_owned(),                // Pass the class name.
                     is_important,                         // Pass the `!important` flag.
                     class.responsive_patterns.to_owned(), // Clone responsive patterns.
                 ),
@@ -92,6 +98,13 @@ impl Crealion {
                 .for_each(|(idx, result)| match result {
                     // Handle successful results.
                     Ok((utility_classes, process_alerts, utility_names)) => {
+                        debug!(
+                            ?utility_classes,
+                            ?utility_names,
+                            "Collected styles for class {}",
+                            class_name
+                        );
+
                         // Append any alerts generated during processing.
                         alerts.append(&mut process_alerts.to_vec());
                         // Add utility names to the `Class` instance.
@@ -107,6 +120,8 @@ impl Crealion {
                     }
                     // Handle errors encountered during processing.
                     Err(err) => {
+                        error!(error = %err, "Error processing styles for class {}", class_name);
+
                         alerts.push(ShellscapeAlerts::create_galadriel_error(
                             Local::now(),
                             GaladrielError::raise_general_other_error(
@@ -117,6 +132,8 @@ impl Crealion {
                         ));
                     }
                 });
+
+            info!("Completed processing for class: {}", class_name);
 
             // Return the processed class and any collected alerts.
             (my_class, alerts)
@@ -135,6 +152,7 @@ impl Crealion {
     /// # Returns
     /// A `JoinHandle` that resolves to a vector of `ShellscapeAlerts`, containing any
     /// notifications or errors generated during processing.
+    #[instrument(level = "info", skip(self, class_definitions), fields(context = %context, parent_context = ?parent_context, context_type = ?context_type))]
     pub fn handle_class_definitions(
         &self,
         context: String,
@@ -143,10 +161,18 @@ impl Crealion {
         context_type: ContextType,
     ) -> JoinHandle<Vec<ShellscapeAlerts>> {
         tokio::task::spawn(async move {
+            info!(
+                "Starting to handle class tracking definitions for context: {}",
+                context
+            );
+
             let mut alerts = vec![];
 
             // Iterate over all provided class definitions.
             for class_definition in class_definitions {
+                let class_name = class_definition.get_class_name();
+                debug!(class_name = %class_name, "Processing class definition");
+
                 // Launch processing tasks for each class definition.
                 let processing_tasks = join_all(vec![
                     // Process utility classes.
@@ -157,7 +183,7 @@ impl Crealion {
                     Self::configure_class(
                         context.to_owned(),
                         parent_context.to_owned(),
-                        class_definition.get_class_name(),
+                        class_name.to_owned(),
                         class_definition.get_deriving_from(),
                         class_definition.get_utility_names(),
                         context_type.to_owned(),
@@ -168,6 +194,8 @@ impl Crealion {
                 // Handle the results of each processing task.
                 processing_tasks.iter().for_each(|result| match result {
                     Err(err) => {
+                        error!(error = %err, "Error during task for class {}", class_name);
+
                         // Handle task-level error.
                         let error = GaladrielError::raise_general_other_error(
                             ErrorKind::TaskFailure,
@@ -181,14 +209,23 @@ impl Crealion {
                         alerts.push(notification);
                     }
                     Ok(Err(err)) => {
+                        error!(error = ?err, "Internal processing error for class {}", class_name);
+
                         let notification =
                             ShellscapeAlerts::create_galadriel_error(Local::now(), err.to_owned());
 
                         alerts.push(notification);
                     }
-                    _ => {}
+                    Ok(_) => {
+                        debug!("Task completed successfully for class {}", class_name);
+                    }
                 });
             }
+
+            info!(
+                "Completed handling class definitions for context: {}",
+                context
+            );
 
             alerts
         })
@@ -207,16 +244,25 @@ impl Crealion {
         is_responsive: bool,
     ) -> JoinHandle<GaladrielResult<()>> {
         tokio::task::spawn_blocking(move || {
+            info!(
+                "Setting utility classes. Total classes: {}",
+                utility_classes.len()
+            );
+
             // Determine the STYLITRON node name based on responsiveness.
             let node_name = match is_responsive {
                 true => "responsive",
                 false => "styles",
             };
 
+            debug!(node_name, "Determined STYLITRON node name");
+
             // Retrieve mutable reference to the styles data from STYLITRON.
             let mut styles_data = match STYLITRON.get_mut(node_name) {
                 Some(data) => data,
                 None => {
+                    error!(node_name, "Access denied to STYLITRON AST");
+
                     // Return an error if access is denied.
                     return Err(GaladrielError::raise_critical_other_error(
                         ErrorKind::AccessDeniedToStylitronAST,
@@ -229,28 +275,38 @@ impl Crealion {
             // Process the styles based on the node type.
             match *styles_data {
                 Stylitron::Styles(ref mut styles_definitions) => {
+                    info!("Processing styles node.");
+
                     // Add each utility class to the styles definitions.
                     for utility_class in utility_classes {
                         Self::add_style_definition(utility_class, styles_definitions);
                     }
                 }
                 Stylitron::ResponsiveStyles(ref mut responsive_definitions) => {
+                    info!("Processing responsive styles node.");
+
                     for utility_class in utility_classes {
-                        let breakpoint = utility_class
-                            .get_breakpoint()
-                            .unwrap_or_else(|| "no-breakpoint".to_string());
+                        let breakpoint = match utility_class.get_breakpoint() {
+                            Some(b) => b,
+                            None => continue,
+                        };
 
                         // Retrieve or create the breakpoint styles.
                         let breakpoint_styles = responsive_definitions
                             .entry(breakpoint.clone())
                             .or_insert_with(generates_node_styles);
 
+                        debug!(breakpoint, "Adding utility class to responsive styles");
                         // Add the utility class to the breakpoint styles.
                         Self::add_style_definition(utility_class, breakpoint_styles);
                     }
                 }
-                _ => {}
+                _ => {
+                    warn!("Unexpected STYLITRON node type encountered.");
+                }
             }
+
+            info!("Utility classes successfully set.");
 
             Ok(())
         })
@@ -261,6 +317,7 @@ impl Crealion {
     /// # Parameters
     /// - `utility_class`: The `UtilityClass` to be added.
     /// - `definitions`: The mutable reference to the definitions map.
+    #[instrument(skip_all, fields(utility_class = %utility_class.get_class_name()))]
     fn add_style_definition(
         utility_class: UtilityClass,
         definitions: &mut IndexMap<
@@ -268,6 +325,8 @@ impl Crealion {
             IndexMap<String, IndexMap<String, IndexMap<String, String>>>,
         >,
     ) {
+        debug!("Adding style definition to the tracking map.");
+
         // Insert the utility class into the appropriate map hierarchy.
         let pattern_map = definitions
             .entry(utility_class.get_pattern())
@@ -284,6 +343,8 @@ impl Crealion {
         property_map
             .entry(utility_class.get_class_name())
             .or_insert(utility_class.get_value());
+
+        debug!("Style definition added successfully to the tracking map.");
     }
 
     /// Configures a class in the CLASSINATOR AST for the specified context and type.
@@ -298,6 +359,7 @@ impl Crealion {
     ///
     /// # Returns
     /// A `JoinHandle` resolving to a `GaladrielResult<()>`.
+    #[instrument(skip_all, fields(context, class_name, context_type = ?context_type))]
     fn configure_class(
         context: String,
         parent_context: Option<String>,
@@ -307,6 +369,8 @@ impl Crealion {
         context_type: ContextType,
     ) -> JoinHandle<GaladrielResult<()>> {
         tokio::task::spawn_blocking(move || {
+            info!("Configuring class in CLASSINATOR AST.");
+
             // Determine the CLASSINATOR node name based on context type.
             let context_name = match context_type {
                 ContextType::Central => "central",
@@ -314,10 +378,14 @@ impl Crealion {
                 ContextType::Module => "modules",
             };
 
+            debug!(context_name, "Determined CLASSINATOR node name");
+
             // Retrieve mutable reference to the context data from CLASSINATOR.
             let mut context_data = match CLASSINATOR.get_mut(context_name) {
                 Some(data) => data,
                 None => {
+                    error!(context_name, "Access denied to CLASSINATOR AST");
+
                     // Return an error if access is denied.
                     return Err(GaladrielError::raise_critical_other_error(
                         ErrorKind::AccessDeniedToClassinatorAST,
@@ -333,6 +401,7 @@ impl Crealion {
             // Configure the class based on context type.
             match *context_data {
                 Classinator::Central(ref mut central_definitions) => {
+                    info!("Setting central context tracking map.");
                     Self::set_classinator_children(
                         base_class,
                         class_name,
@@ -341,6 +410,7 @@ impl Crealion {
                     );
                 }
                 Classinator::Layouts(ref mut layout_definitions) => {
+                    info!("Setting layout context tracking map.");
                     Self::set_classinator_layout(
                         context,
                         base_class,
@@ -350,6 +420,7 @@ impl Crealion {
                     );
                 }
                 Classinator::Modules(ref mut module_definitions) => {
+                    info!("Setting module context tracking map.");
                     Self::set_classinator_module(
                         context,
                         parent_context,
@@ -360,6 +431,8 @@ impl Crealion {
                     );
                 }
             }
+
+            info!("Class successfully tracked.");
 
             Ok(())
         })
@@ -372,6 +445,7 @@ impl Crealion {
     /// - `class_name`: The name of the class.
     /// - `utility_names`: A vector of utility names associated with the class.
     /// - `definitions`: A mutable reference to the map storing class hierarchy definitions.
+    #[instrument(skip(definitions), fields(base_class = ?base_class, class_name = %class_name))]
     fn set_classinator_children(
         base_class: Option<String>,
         class_name: String,
@@ -385,10 +459,21 @@ impl Crealion {
         };
 
         // Retrieve or create a map of class definitions for the base/inherit class.
-        let inherits_map = definitions.entry(base_class).or_insert_with(IndexMap::new);
+        let inherits_map = definitions
+            .entry(base_class.to_owned())
+            .or_insert_with(IndexMap::new);
+        trace!(class_name = %class_name, utility_names = ?utility_names, "Adding class to inheritance map");
 
         // Insert the class along with its utility names.
-        inherits_map.entry(class_name).or_insert(utility_names);
+        inherits_map
+            .entry(class_name.to_owned())
+            .or_insert(utility_names);
+
+        debug!(
+            base_class = %base_class,
+            class_name = %class_name,
+            "Class successfully added to inheritance map"
+        );
     }
 
     /// Configures class definitions specific to a layout context.
@@ -399,6 +484,7 @@ impl Crealion {
     /// - `class_name`: The name of the class to define within the layout.
     /// - `utility_names`: A vector of utility names associated with the class.
     /// - `definitions`: A mutable reference to the map storing layout class definitions.
+    #[instrument(skip(definitions), fields(context = %context, class_name = %class_name))]
     fn set_classinator_layout(
         context: String,
         base_class: Option<String>,
@@ -407,10 +493,14 @@ impl Crealion {
         definitions: &mut IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>,
     ) {
         // Retrieve or create a layout-specific map for the given context.
-        let layout_map = definitions.entry(context).or_insert_with(IndexMap::new);
+        let layout_map = definitions
+            .entry(context.to_owned())
+            .or_insert_with(IndexMap::new);
 
         // Use the shared logic to add the class to the layout hierarchy.
         Self::set_classinator_children(base_class, class_name, utility_names, layout_map);
+
+        debug!(context = %context, "Class successfully added to layout context");
     }
 
     /// Configures class definitions specific to a module context.
@@ -440,12 +530,19 @@ impl Crealion {
         };
 
         // Retrieve or create a parent-specific map for the module hierarchy.
-        let parent_map = definitions.entry(parent).or_insert_with(IndexMap::new);
+        let parent_map = definitions
+            .entry(parent.to_owned())
+            .or_insert_with(IndexMap::new);
+
         // Retrieve or create a context-specific map within the parent hierarchy.
-        let module_map = parent_map.entry(context).or_insert_with(IndexMap::new);
+        let module_map = parent_map
+            .entry(context.to_owned())
+            .or_insert_with(IndexMap::new);
 
         // Use the shared logic to add the class to the module hierarchy.
         Self::set_classinator_children(base_class, class_name, utility_names, module_map);
+
+        debug!(context = %context, parent = %parent, "Class successfully added to module hierarchy");
     }
 }
 

@@ -30,6 +30,10 @@ impl Crealion {
     /// - `classes`: A mutable vector for storing the resulting utility classes.
     /// - `utility_names`: A mutable vector for storing the utility class names.
     /// - `patterns`: A map of style patterns and their associated properties and values.
+    #[tracing::instrument(
+        skip(inherited_contexts, alerts, classes, utility_names, patterns),
+        fields(class_name = %class_name, breakpoint = ?breakpoint, is_important = is_important)
+    )]
     pub async fn match_style_patterns(
         inherited_contexts: &Vec<String>,
         breakpoint: Option<String>,
@@ -40,10 +44,17 @@ impl Crealion {
         utility_names: &mut Vec<String>,
         patterns: IndexMap<String, IndexMap<String, String>>,
     ) {
+        tracing::info!("Starting match_style_patterns for class {}", class_name);
+
         // Create a variables processor for resolving variables within the context.
         let variables_processor = match VariablesProcessor::new(inherited_contexts.to_vec()) {
-            Ok(processor) => processor,
+            Ok(processor) => {
+                tracing::debug!("Variables processor created successfully.");
+                processor
+            }
             Err(err) => {
+                tracing::error!("Failed to create variables processor: {:?}", err);
+
                 // Log an error alert if the processor creation fails.
                 alerts.insert(
                     0,
@@ -60,12 +71,20 @@ impl Crealion {
             .map(|b| BreakpointProcessor::new(b).process())
             .unwrap_or(None);
 
+        tracing::debug!(?breakpoint_value, "Breakpoint resolved.");
+
         // Create a nickname processor for resolving style aliases.
         let nickname_processor = NicknameProcessor::new(inherited_contexts.to_vec());
 
+        tracing::debug!("Nickname processor initialized.");
+
         // Iterate through each pattern and its associated styles.
         for (pattern, style) in patterns {
+            tracing::debug!(?pattern, "Processing pattern.");
+
             for (property, value) in style {
+                tracing::trace!(?property, ?value, "Processing style property.");
+
                 // Process the style property and resolve its alias.
                 match Self::process_style_property(
                     &property,
@@ -81,6 +100,13 @@ impl Crealion {
                         .await
                     {
                         Ok(Some(new_value)) => {
+                            tracing::debug!(
+                                new_pattern = pascalify(&pattern),
+                                new_property = %new_property,
+                                new_value = %new_value,
+                                "Generated utility class."
+                            );
+
                             // Trim unnecessary suffixes from the pattern name.
                             let new_pattern = pattern.trim_end_matches("stylesheet");
                             // Generate the utility class name.
@@ -106,18 +132,37 @@ impl Crealion {
                             utility_names.push(utility_cls_name);
                         }
                         Err(err) => {
+                            tracing::error!(
+                                "Failed to process variables for property `{}`: {:?}",
+                                property,
+                                err
+                            );
+
                             // Log an error alert for failed variable processing.
                             alerts.insert(
                                 0,
                                 ShellscapeAlerts::create_galadriel_error(Local::now(), err),
                             );
                         }
-                        Ok(None) => {} // Skip processing if no value is returned.
+                        Ok(None) => {
+                            tracing::warn!(
+                                "Variable processor returned None for property `{}`.",
+                                property
+                            );
+                        } // Skip processing if no value is returned.
                     },
-                    Err(_) => {} // Skip processing if the property alias cannot be resolved.
+                    Err(_) => {
+                        tracing::warn!(
+                            "Skipping unresolved property alias `{}` in pattern `{}`.",
+                            property,
+                            pascalify(&pattern)
+                        );
+                    } // Skip processing if the property alias cannot be resolved.
                 }
             }
         }
+
+        tracing::info!("Completed match_style_patterns for class {}", class_name);
     }
 
     /// Processes a style property alias and resolves it to a recognized property name.
@@ -136,6 +181,10 @@ impl Crealion {
     /// # Returns
     /// - `Ok(String)`: The resolved property name.
     /// - `Err(())`: An error if the alias cannot be resolved.
+    #[tracing::instrument(
+        skip(alerts, nickname_processor),
+        fields(alias = %alias, class_name = %class_name, pattern = %pattern, breakpoint = ?breakpoint)
+    )]
     fn process_style_property(
         alias: &str,
         class_name: &str,
@@ -147,24 +196,41 @@ impl Crealion {
         // Check if the alias is a nickname alias.
         if alias.starts_with("nickname;") {
             let alias_value = alias.trim_start_matches("nickname;");
+            tracing::debug!("Processing nickname alias: {}", alias_value);
 
             // Attempt to process the alias using the nickname processor.
             match nickname_processor.process(alias_value) {
-                Some(processed_alias) => return Ok(processed_alias),
+                Some(processed_alias) => {
+                    tracing::debug!(
+                        "Resolved nickname alias `{}` to `{}`.",
+                        alias_value,
+                        processed_alias
+                    );
+
+                    return Ok(processed_alias);
+                }
                 None => {
                     // Generate a formatted warning message for unresolved aliases.
                     let formatted_pattern = pascalify(&pattern);
-                    let panoramic_message = match breakpoint {
-                        Some(name) => format!(
-                            " This occurred in the `{}` breakpoint of the PanoramicViewer method.",
+                    let panoramic_message = breakpoint
+                        .as_ref()
+                        .map(|name| {
+                            format!(
+                            " This occurred in the `{}` breakpoint of the `PanoramicViewer` method.",
                             name
-                        ),
-                        None => String::new(),
-                    };
+                        )
+                        })
+                        .unwrap_or_default();
 
                     let message = format!(
                         "The alias `{}` in the `{}` class for the `{}` pattern was not recognized. The style could not be created for this value. Please review and update the alias to ensure the style is generated correctly.{}",
                         alias_value, class_name, formatted_pattern, panoramic_message
+                    );
+
+                    tracing::warn!(
+                        "Unresolved nickname alias: `{}`. Alert: {}",
+                        alias_value,
+                        message
                     );
 
                     // Log a warning alert for the unresolved alias.

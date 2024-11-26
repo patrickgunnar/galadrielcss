@@ -35,14 +35,23 @@ impl VariablesProcessor {
     /// # Returns
     /// A `GaladrielResult` containing the new `VariablesProcessor` or an error if the regex compilation fails.
     pub fn new(inherited_contexts: Vec<String>) -> GaladrielResult<Self> {
+        tracing::info!(
+            "Initializing VariablesProcessor with contexts: {:?}",
+            inherited_contexts
+        );
+
         // Initialize the regex for capturing variables, raising an error if the pattern is invalid.
         let re = Regex::new(r"\$\{(.*?)\}").map_err(|err| {
+            tracing::error!("Failed to compile regex for variable resolution: {}", err);
+
             GaladrielError::raise_general_other_error(
                 ErrorKind::Other,
                 &err.to_string(),
                 ErrorAction::Notify,
             )
         })?;
+
+        tracing::debug!("VariablesProcessor successfully initialized.");
 
         Ok(Self {
             inherited_contexts,
@@ -71,6 +80,13 @@ impl VariablesProcessor {
         breakpoint: &Option<String>,
         alerts: &mut Vec<ShellscapeAlerts>,
     ) -> GaladrielResult<Option<String>> {
+        tracing::info!(
+            "Starting variable resolution for value: `{}` in class `{}`, property `{}`.",
+            value,
+            class_name,
+            property
+        );
+
         // Start with the original value and an index offset for replacements.
         let mut resolved_value = value.to_string();
         let mut offset_index = 0;
@@ -79,6 +95,7 @@ impl VariablesProcessor {
         for capture in self.re.captures_iter(value) {
             // Extract the variable name from the capture group.
             let relative_name = &capture[1].to_string();
+            tracing::debug!("Processing variable: `{}`.", relative_name);
 
             // Concurrently attempt to resolve the variable from multiple nodes.
             let results = join_all(vec![
@@ -97,6 +114,12 @@ impl VariablesProcessor {
 
             match resolved_result {
                 Some(Ok(replacement_value)) => {
+                    tracing::info!(
+                        "Variable `{}` resolved to `{}`.",
+                        relative_name,
+                        replacement_value
+                    );
+
                     // Compute the positions of the variable within the string.
                     let (start_pos, end_pos) = self.get_positions(capture)?;
 
@@ -117,6 +140,8 @@ impl VariablesProcessor {
                     offset_index += replacement_value.len().saturating_sub(adjustment);
                 }
                 Some(Err(err)) => {
+                    tracing::error!("Failed to resolve variable `{}`: {}.", relative_name, err);
+
                     // Raise an error if variable resolution fails.
                     return Err(GaladrielError::raise_general_other_error(
                         ErrorKind::TaskFailure,
@@ -125,16 +150,24 @@ impl VariablesProcessor {
                     ));
                 }
                 None => {
+                    tracing::warn!(
+                        "Variable `{}` could not be resolved in contexts: {:?}.",
+                        relative_name,
+                        self.inherited_contexts
+                    );
+
                     // If no resolution is found, log a warning and return `None`.
                     let formatted_property = camelify(&property);
                     let formatted_pattern = pascalify(&pattern);
-                    let panoramic_message = match breakpoint {
-                        Some(name) => format!(
-                            " This occurred in the `{}` breakpoint of the PanoramicViewer method.",
+                    let panoramic_message = breakpoint
+                        .as_ref()
+                        .map(|name| {
+                            format!(
+                            " This occurred in the `{}` breakpoint of the `PanoramicViewer` method.",
                             name
-                        ),
-                        None => String::new(),
-                    };
+                        )
+                        })
+                        .unwrap_or_default();
 
                     let message = format!(
                         "The `{}` property in the `{}` class for the `{}` pattern references an unrecognized `{}` variable, preventing the style from being created. Please review and update the variable to ensure the style is generated correctly.{}",
@@ -148,6 +181,12 @@ impl VariablesProcessor {
             }
         }
 
+        tracing::info!(
+            "Variable resolution completed for value: `{}`. Resolved value: `{}`.",
+            value,
+            resolved_value
+        );
+
         Ok(Some(resolved_value))
     }
 
@@ -159,6 +198,11 @@ impl VariablesProcessor {
     /// # Returns
     /// A [`JoinHandle`] for a task that resolves to an optional string containing the resolved variable value.
     fn process_from_variables_node(&self, relative_name: String) -> JoinHandle<Option<String>> {
+        tracing::debug!(
+            "Spawning task to resolve variable `{}` from variables node.",
+            relative_name
+        );
+
         // Clone the inherited contexts to be moved into the async block.
         let inherited_contexts = self.inherited_contexts.clone();
 
@@ -177,9 +221,15 @@ impl VariablesProcessor {
                                     // Retrieve the resolved variable name, if available.
                                     context_variables.get(&relative_name).and_then(
                                         |variable_entry| {
-                                            variable_entry
-                                                .get_index(0)
-                                                .map(|(resolved_name, _)| resolved_name.to_owned())
+                                            variable_entry.get_index(0).map(|(resolved_name, _)| {
+                                                tracing::debug!(
+                                                    "Resolved variable `{}` to `{}`.",
+                                                    relative_name,
+                                                    resolved_name
+                                                );
+
+                                                resolved_name.to_owned()
+                                            })
                                         },
                                     )
                                 })
@@ -198,6 +248,11 @@ impl VariablesProcessor {
     /// # Returns
     /// A [`JoinHandle`] for a task that resolves to an optional string containing the resolved theme value.
     fn process_from_themes_node(&self, relative_name: String) -> JoinHandle<Option<String>> {
+        tracing::debug!(
+            "Spawning task to resolve variable `{}` from themes node.",
+            relative_name
+        );
+
         // Clone the inherited contexts to be moved into the async block.
         let inherited_contexts = self.inherited_contexts.clone();
 
@@ -249,9 +304,15 @@ impl VariablesProcessor {
             schema_variables
                 .get(relative_name)
                 .and_then(|variable_entry| {
-                    variable_entry
-                        .get_index(0)
-                        .map(|(resolved_name, _)| resolved_name.to_owned())
+                    variable_entry.get_index(0).map(|(resolved_name, _)| {
+                        tracing::debug!(
+                            "Resolved theme variable `{}` to `{}`.",
+                            relative_name,
+                            resolved_name
+                        );
+
+                        resolved_name.to_owned()
+                    })
                 })
         })
     }
@@ -264,6 +325,11 @@ impl VariablesProcessor {
     /// # Returns
     /// A [`JoinHandle`] for a task that resolves to an optional string containing the resolved animation value.
     fn process_from_animations_node(&self, relative_name: String) -> JoinHandle<Option<String>> {
+        tracing::debug!(
+            "Spawning task to resolve animation `{}` from animations node.",
+            relative_name
+        );
+
         // Clone the inherited contexts to be moved into the async block.
         let inherited_contexts = self.inherited_contexts.clone();
 
@@ -281,9 +347,17 @@ impl VariablesProcessor {
                                     // Retrieve the resolved animation name, if available.
                                     context_animations.get(&relative_name).and_then(
                                         |animation_entry| {
-                                            animation_entry
-                                                .get_index(0)
-                                                .map(|(resolved_name, _)| resolved_name.to_owned())
+                                            animation_entry.get_index(0).map(
+                                                |(resolved_name, _)| {
+                                                    tracing::debug!(
+                                                        "Resolved animation `{}` to `{}`.",
+                                                        relative_name,
+                                                        resolved_name
+                                                    );
+
+                                                    resolved_name.to_owned()
+                                                },
+                                            )
                                         },
                                     )
                                 },
@@ -308,6 +382,10 @@ impl VariablesProcessor {
             .get(0)
             .and_then(|cap| Some((cap.start(), cap.end())))
             .ok_or_else(|| {
+                tracing::error!(
+                    "Failed to retrieve capture group positions: capture group 0 not found."
+                );
+
                 GaladrielError::raise_general_other_error(
                     ErrorKind::Other,
                     "Failed to retrieve capture group positions: capture group 0 not found.",

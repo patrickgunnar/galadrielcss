@@ -165,7 +165,7 @@ impl ShellscapeApp {
 
     pub fn add_alerts_vec(&mut self, alerts: &mut Vec<ShellscapeAlerts>) {
         alerts.append(&mut self.alerts);
-        self.alerts = alerts.to_vec();
+        self.alerts = alerts[..49].to_vec();
     }
 
     /// Adds a new alert to the application.
@@ -179,6 +179,10 @@ impl ShellscapeApp {
         debug!("New notification: {:?}", alert);
 
         self.alerts.insert(0, alert);
+
+        if self.alerts.len() > 50 {
+            self.alerts.pop();
+        }
     }
 
     /// Clears all alerts from the application.

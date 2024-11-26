@@ -34,6 +34,12 @@ impl Crealion {
     ) -> JoinHandle<(Vec<UtilityClass>, Vec<ShellscapeAlerts>, Vec<String>)> {
         // Spawn an asynchronous task using `tokio::spawn`.
         tokio::spawn(async move {
+            tracing::info!(
+                "Starting collection of non-responsive styles for class '{}'. Important: {}",
+                class_name,
+                is_important
+            );
+
             // Initialize a mutable vector to collect alerts.
             let mut alerts: Vec<ShellscapeAlerts> = vec![];
             // Initialize a mutable vector to collect utility classes.
@@ -44,6 +50,12 @@ impl Crealion {
             // Check if there are style patterns to process.
             match style_patterns {
                 Some(patterns) => {
+                    tracing::debug!(
+                        "Processing {} non-responsive style patterns for class '{}'.",
+                        patterns.len(),
+                        class_name
+                    );
+
                     // If style patterns exist, match them to generate utility classes.
                     // The styles are processed without any breakpoint (`None`).
                     Self::match_style_patterns(
@@ -57,9 +69,28 @@ impl Crealion {
                         patterns,            // Provide the style patterns to match.
                     )
                     .await; // Await the asynchronous matching process.
+
+                    tracing::info!(
+                        "Finished processing styles for class '{}'. Generated {} utility classes.",
+                        class_name,
+                        classes.len()
+                    );
                 }
-                None => {} // If no style patterns are provided, no operation is performed.
+                None => {
+                    tracing::warn!(
+                        "No style patterns provided for class '{}'. Skipping processing.",
+                        class_name
+                    );
+                } // If no style patterns are provided, no operation is performed.
             }
+
+            tracing::debug!(
+                "Returning results for class '{}': {} utility classes, {} alerts, {} utility names.",
+                class_name,
+                classes.len(),
+                alerts.len(),
+                utility_names.len()
+            );
 
             // Return the collected utility classes, alerts and utility class names as a tuple.
             (classes, alerts, utility_names)
