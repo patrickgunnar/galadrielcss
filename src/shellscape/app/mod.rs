@@ -362,7 +362,7 @@ impl ShellscapeApp {
     ///
     /// This method updates the vertical axis for the table, ensuring it doesn't exceed the scrollable content length.
     pub fn reset_alerts_scroll_up(&mut self) {
-        let result = self.table_vertical_axis.saturating_add(1);
+        let result = self.table_vertical_axis.saturating_add(2);
 
         if result as usize <= self.table_scroll_len {
             self.table_vertical_axis = result;
@@ -374,7 +374,7 @@ impl ShellscapeApp {
     ///
     /// This method updates the vertical axis for the table, ensuring it doesn't go below 0.
     pub fn reset_alerts_scroll_down(&mut self) {
-        let result = self.table_vertical_axis.saturating_sub(1);
+        let result = self.table_vertical_axis.saturating_sub(2);
 
         self.table_vertical_axis = result;
         self.table_scroll_state = self.table_scroll_state.position(result as usize);
@@ -384,7 +384,7 @@ impl ShellscapeApp {
     ///
     /// This method updates the vertical axis for the dock, ensuring it doesn't exceed the scrollable content length.
     pub fn reset_dock_scroll_up(&mut self) {
-        let result = self.dock_vertical_axis.saturating_add(1);
+        let result = self.dock_vertical_axis.saturating_add(2);
 
         if result as usize <= self.dock_scroll_len {
             self.dock_vertical_axis = result;
@@ -396,7 +396,7 @@ impl ShellscapeApp {
     ///
     /// This method updates the vertical axis for the dock, ensuring it doesn't go below 0.
     pub fn reset_dock_scroll_down(&mut self) {
-        let result = self.dock_vertical_axis.saturating_sub(1);
+        let result = self.dock_vertical_axis.saturating_sub(2);
 
         self.dock_vertical_axis = result;
         self.dock_scroll_state = self.dock_scroll_state.position(result as usize);

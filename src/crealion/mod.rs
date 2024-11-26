@@ -1,5 +1,5 @@
 use chrono::Local;
-use class::types::Class;
+use class::ContextType;
 use futures::future::join_all;
 use nenyr::types::{
     ast::NenyrAst, central::CentralContext, layout::LayoutContext, module::ModuleContext,
@@ -45,7 +45,7 @@ impl Crealion {
     }
 
     pub async fn init_central_collector(&mut self, context: &CentralContext) -> CrealionResult {
-        let inherited_contexts: Vec<String> = vec![self.central_context_identifier.clone()];
+        let inherited_contexts: Vec<String> = vec![self.central_context_identifier.to_owned()];
 
         let classes_futures = context.classes.as_ref().map_or_else(
             || vec![],
@@ -60,7 +60,7 @@ impl Crealion {
         );
 
         let classes_results = join_all(classes_futures).await;
-        let _classes: Vec<Class> = classes_results
+        let classes = classes_results
             .iter()
             .filter_map(|result| match result {
                 Ok((class, alerts)) => {
@@ -81,11 +81,33 @@ impl Crealion {
                     None
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        // TODO: Create the set classes methods.
+        let result = self
+            .handle_class_definitions(
+                self.central_context_identifier.to_owned(),
+                None,
+                classes,
+                ContextType::Central,
+            )
+            .await
+            .map_err(|err| {
+                GaladrielError::raise_general_other_error(
+                    ErrorKind::TaskFailure,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                )
+            });
 
-        //println!("{:#?}", classes);
+        match result {
+            Ok(alerts) => {
+                self.alerts.append(&mut alerts.to_vec());
+            }
+            Err(err) => {
+                self.alerts
+                    .push(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+            }
+        }
 
         Ok((Some(self.alerts.clone()), None))
     }

@@ -524,6 +524,8 @@ pub enum ErrorKind {
     FileReadMaxRetriesExceeded,
     FileReadFailed,
     TaskFailure,
+    AccessDeniedToStylitronAST,
+    AccessDeniedToClassinatorAST,
     Other,
 }
 

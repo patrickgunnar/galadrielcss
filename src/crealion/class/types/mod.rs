@@ -56,8 +56,11 @@ impl UtilityClass {
     }
 
     /// Checks if the class is marked as `!important`.
-    pub fn is_important(&self) -> bool {
-        self.is_important
+    pub fn get_important(&self) -> String {
+        match self.is_important {
+            true => "!important".to_string(),
+            false => "_".to_string(),
+        }
     }
 
     /// Retrieves the CSS property.
@@ -68,6 +71,10 @@ impl UtilityClass {
     /// Retrieves the CSS value.
     pub fn get_value(&self) -> String {
         self.value.clone()
+    }
+
+    pub fn get_pattern(&self) -> String {
+        self.pattern.clone()
     }
 }
 
@@ -85,6 +92,8 @@ pub struct Class {
     utility_names: Vec<String>,
     /// List of utility classes associated with the Nenyr class.
     classes: Vec<UtilityClass>,
+    /// List of utility responsive classes associated with the Nenyr class.
+    responsive_classes: Vec<UtilityClass>,
 }
 
 #[allow(dead_code)]
@@ -100,6 +109,7 @@ impl Class {
     pub fn new(class_name: &str, deriving_from: Option<String>) -> Self {
         Self {
             class_name: class_name.to_string(),
+            responsive_classes: vec![],
             utility_names: vec![],
             classes: vec![],
             deriving_from,
@@ -111,6 +121,10 @@ impl Class {
     /// Appends the given utility names to the class's existing list.
     pub fn set_utility_names(&mut self, utility_names: &mut Vec<String>) {
         self.utility_names.append(utility_names);
+    }
+
+    pub fn set_responsive_classes(&mut self, classes: &mut Vec<UtilityClass>) {
+        self.responsive_classes.append(classes);
     }
 
     /// Sets the utility classes for the class.
@@ -137,7 +151,11 @@ impl Class {
 
     /// Retrieves the list of utility classes.
     pub fn get_classes(&self) -> Vec<UtilityClass> {
-        self.classes.clone()
+        self.classes.to_vec()
+    }
+
+    pub fn get_responsive_classes(&self) -> Vec<UtilityClass> {
+        self.responsive_classes.to_vec()
     }
 }
 
@@ -165,7 +183,7 @@ mod tests {
 
         assert_eq!(utility_class.get_breakpoint(), Some("lg".to_string()));
         assert_eq!(utility_class.get_class_name(), "lg-af-wd4");
-        assert!(utility_class.is_important());
+        assert_eq!(utility_class.get_important(), "!important".to_string());
         assert_eq!(utility_class.get_property(), "width");
         assert_eq!(utility_class.get_value(), "4rem");
     }
@@ -203,7 +221,7 @@ mod tests {
             "blue",
         );
 
-        assert!(utility_class.is_important());
+        assert_eq!(utility_class.get_important(), "!important".to_string());
         assert_eq!(utility_class.get_class_name(), "!md-hv-bg1");
     }
 

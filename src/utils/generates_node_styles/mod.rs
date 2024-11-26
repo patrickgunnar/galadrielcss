@@ -5,7 +5,7 @@ pub fn generates_node_styles(
     let mut map = IndexMap::new();
     let mut importance = IndexMap::new();
 
-    importance.insert("!importance".to_string(), IndexMap::new());
+    importance.insert("!important".to_string(), IndexMap::new());
     importance.insert("_".to_string(), IndexMap::new());
 
     map.insert("_".to_string(), importance.clone());

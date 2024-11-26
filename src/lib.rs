@@ -9,7 +9,6 @@ use formera::Formera;
 use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
-use nenyr::error::{NenyrError, NenyrErrorTracing};
 use shellscape::{
     alerts::ShellscapeAlerts, app::ShellscapeApp, commands::ShellscapeCommands, Shellscape,
 };
@@ -168,20 +167,6 @@ impl GaladrielRuntime {
         interface.invoke()?;
 
         tracing::info!("Galadriel CSS development runtime initiated.");
-
-        // TEST AREA
-        let notification = ShellscapeAlerts::create_warning(
-            Local::now(),
-            "Please double-check your code for potential issues before proceeding. Ensure all dependencies are up to date and the build is clean."
-        );
-
-        shellscape_app.add_alert(notification);
-
-        let err = NenyrError { suggestion: Some("Ensure that the `myTestingClass` class or deriving name declaration is followed by an opening curly bracket `{` to properly define the class block. The correct syntax is: `Declare Class('myTestingClass') { ... }` or `Declare Class('myTestingClass') Deriving('layoutName') { ... }`.".to_string()), context_name: Some("Central".to_string()), context_path: "examples/nenyr/central.nyr".to_string(), error_message: "An opening curly bracket `{` was expected after the `myTestingClass` class or deriving name declaration to start the class block, but it was not found. Unfortunately, instead of the expected value, we received the following: `Stylesheet`.".to_string(), error_kind: nenyr::error::NenyrErrorKind::SyntaxError, error_tracing: NenyrErrorTracing { line_before: Some("    Declare Class(\"myTestingClass\") ".to_string()), line_after: Some("            backgroundColor: \"blue\",".to_string()), error_line: Some("        Stylesheet({".to_string()), error_on_line: 158, error_on_col: 19, error_on_pos: 5070 } };
-        let notification = ShellscapeAlerts::create_nenyr_error(Local::now(), err);
-
-        shellscape_app.add_alert(notification);
-        // TEST AREA
 
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
@@ -426,6 +411,9 @@ impl GaladrielRuntime {
 
                         shellscape_app.add_alerts_vec(&mut alerts.to_vec());
                         shellscape_app.add_alert(notification);
+
+                        //println!("{:?}\n", *STYLITRON);
+                        //println!("{:?}", *CLASSINATOR);
                     }
                     Err(GaladrielError::NenyrError { start_time, error }) => {
                         shellscape_app.add_alert(ShellscapeAlerts::create_nenyr_error(
