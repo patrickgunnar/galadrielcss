@@ -465,9 +465,9 @@ impl Crealion {
         trace!(class_name = %class_name, utility_names = ?utility_names, "Adding class to inheritance map");
 
         // Insert the class along with its utility names.
-        inherits_map
-            .entry(class_name.to_owned())
-            .or_insert(utility_names);
+        let tracking_map = inherits_map.entry(class_name.to_owned()).or_default();
+
+        *tracking_map = utility_names;
 
         debug!(
             base_class = %base_class,

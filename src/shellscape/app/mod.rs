@@ -165,7 +165,12 @@ impl ShellscapeApp {
 
     pub fn add_alerts_vec(&mut self, alerts: &mut Vec<ShellscapeAlerts>) {
         alerts.append(&mut self.alerts);
-        self.alerts = alerts[..49].to_vec();
+
+        if alerts.len() > 50 {
+            self.alerts = alerts[..49].to_vec();
+        } else {
+            self.alerts = alerts.to_vec();
+        }
     }
 
     /// Adds a new alert to the application.

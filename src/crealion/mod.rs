@@ -11,6 +11,7 @@ use crate::{
     GaladrielResult,
 };
 
+mod breakpoint;
 mod class;
 mod mocks;
 mod processors;
@@ -46,6 +47,27 @@ impl Crealion {
 
     pub async fn init_central_collector(&mut self, context: &CentralContext) -> CrealionResult {
         let inherited_contexts: Vec<String> = vec![self.central_context_identifier.to_owned()];
+
+        let futures = join_all(vec![
+            self.process_breakpoints(context.breakpoints.to_owned())
+        ])
+        .await;
+
+        futures.iter().for_each(|result| match result {
+            Ok(alerts) => {
+                self.alerts.append(&mut alerts.to_vec());
+            }
+            Err(err) => {
+                self.alerts.push(ShellscapeAlerts::create_galadriel_error(
+                    Local::now(),
+                    GaladrielError::raise_general_other_error(
+                        ErrorKind::TaskFailure,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    ),
+                ));
+            }
+        });
 
         let classes_futures = context.classes.as_ref().map_or_else(
             || vec![],
