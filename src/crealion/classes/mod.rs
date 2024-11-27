@@ -554,7 +554,7 @@ mod tests {
     use crate::{
         asts::{CLASSINATOR, STYLITRON},
         crealion::{
-            class::ContextType,
+            classes::ContextType,
             mocks::test_helpers::{
                 mock_aliases_node, mock_animations_node, mock_breakpoints_node, mock_themes_node,
                 mock_variable_node,
@@ -707,24 +707,24 @@ mod tests {
         assert_eq!(
             processed_class.get_utility_names(),
             vec![
-                "\\!bgd-clr-exb8".to_string(),
+                "\\!bgd-clr-tN9p".to_string(),
                 "\\!dpy-S4vd".to_string(),
-                "\\!ntn-nm-N9V6".to_string(),
-                "\\!hvr\\.bgd-clr-exb8".to_string(),
+                "\\!ntn-nm-8zUz".to_string(),
+                "\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "\\!hvr\\.dpy-S4vd".to_string(),
-                "\\!hvr\\.ntn-nm-N9V6".to_string(),
-                "mMb\\.\\!bgd-clr-exb8".to_string(),
+                "\\!hvr\\.ntn-nm-8zUz".to_string(),
+                "mMb\\.\\!bgd-clr-tN9p".to_string(),
                 "mMb\\.\\!dpy-S4vd".to_string(),
-                "mMb\\.\\!ntn-nm-N9V6".to_string(),
-                "mMb\\.\\!hvr\\.bgd-clr-exb8".to_string(),
+                "mMb\\.\\!ntn-nm-8zUz".to_string(),
+                "mMb\\.\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "mMb\\.\\!hvr\\.dpy-S4vd".to_string(),
-                "mMb\\.\\!hvr\\.ntn-nm-N9V6".to_string(),
-                "mDk\\.\\!bgd-clr-exb8".to_string(),
+                "mMb\\.\\!hvr\\.ntn-nm-8zUz".to_string(),
+                "mDk\\.\\!bgd-clr-tN9p".to_string(),
                 "mDk\\.\\!dpy-S4vd".to_string(),
-                "mDk\\.\\!ntn-nm-N9V6".to_string(),
-                "mDk\\.\\!hvr\\.bgd-clr-exb8".to_string(),
+                "mDk\\.\\!ntn-nm-8zUz".to_string(),
+                "mDk\\.\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "mDk\\.\\!hvr\\.dpy-S4vd".to_string(),
-                "mDk\\.\\!hvr\\.ntn-nm-N9V6".to_string()
+                "mDk\\.\\!hvr\\.ntn-nm-8zUz".to_string()
             ]
         );
     }
@@ -767,24 +767,24 @@ mod tests {
         assert_eq!(
             processed_class.get_utility_names(),
             vec![
-                "\\!bgd-clr-exb8".to_string(),
+                "\\!bgd-clr-tN9p".to_string(),
                 "\\!dpy-S4vd".to_string(),
-                "\\!ntn-nm-N9V6".to_string(),
-                "\\!hvr\\.bgd-clr-exb8".to_string(),
+                "\\!ntn-nm-8zUz".to_string(),
+                "\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "\\!hvr\\.dpy-S4vd".to_string(),
-                "\\!hvr\\.ntn-nm-N9V6".to_string(),
-                "mMb\\.\\!bgd-clr-exb8".to_string(),
+                "\\!hvr\\.ntn-nm-8zUz".to_string(),
+                "mMb\\.\\!bgd-clr-tN9p".to_string(),
                 "mMb\\.\\!dpy-S4vd".to_string(),
-                "mMb\\.\\!ntn-nm-N9V6".to_string(),
-                "mMb\\.\\!hvr\\.bgd-clr-exb8".to_string(),
+                "mMb\\.\\!ntn-nm-8zUz".to_string(),
+                "mMb\\.\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "mMb\\.\\!hvr\\.dpy-S4vd".to_string(),
-                "mMb\\.\\!hvr\\.ntn-nm-N9V6".to_string(),
-                "mDk\\.\\!bgd-clr-exb8".to_string(),
+                "mMb\\.\\!hvr\\.ntn-nm-8zUz".to_string(),
+                "mDk\\.\\!bgd-clr-tN9p".to_string(),
                 "mDk\\.\\!dpy-S4vd".to_string(),
-                "mDk\\.\\!ntn-nm-N9V6".to_string(),
-                "mDk\\.\\!hvr\\.bgd-clr-exb8".to_string(),
+                "mDk\\.\\!ntn-nm-8zUz".to_string(),
+                "mDk\\.\\!hvr\\.bgd-clr-tN9p".to_string(),
                 "mDk\\.\\!hvr\\.dpy-S4vd".to_string(),
-                "mDk\\.\\!hvr\\.ntn-nm-N9V6".to_string()
+                "mDk\\.\\!hvr\\.ntn-nm-8zUz".to_string()
             ]
         );
     }

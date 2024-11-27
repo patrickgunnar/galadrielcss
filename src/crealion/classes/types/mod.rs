@@ -161,7 +161,7 @@ impl Class {
 
 #[cfg(test)]
 mod tests {
-    use crate::crealion::class::types::{Class, UtilityClass};
+    use crate::crealion::classes::types::{Class, UtilityClass};
 
     #[test]
     fn test_create_class_initialization() {

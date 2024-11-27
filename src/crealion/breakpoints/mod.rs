@@ -80,18 +80,15 @@ impl Crealion {
             tracing::trace!("Applying breakpoints to Stylitron");
 
             // Apply processed breakpoints to Stylitron.
-            match Self::apply_breakpoints_to_stylitron(breakpoints_map) {
-                Ok(()) => {
-                    tracing::debug!("Breakpoints successfully applied to Stylitron");
-                }
-                Err(err) => {
-                    tracing::error!("Error applying breakpoints to Stylitron: {}", err);
+            if let Err(err) = Self::apply_breakpoints_to_stylitron(breakpoints_map) {
+                tracing::error!("Error applying breakpoints to Stylitron: {}", err);
 
-                    alerts.insert(
-                        0,
-                        ShellscapeAlerts::create_galadriel_error(Local::now(), err),
-                    );
-                }
+                alerts.insert(
+                    0,
+                    ShellscapeAlerts::create_galadriel_error(Local::now(), err),
+                );
+            } else {
+                tracing::debug!("Breakpoints successfully applied to Stylitron");
             }
 
             tracing::trace!("process_breakpoints completed");
@@ -125,7 +122,7 @@ impl Crealion {
 
                 Err(GaladrielError::raise_critical_other_error(
                     ErrorKind::AccessDeniedToStylitronAST,
-                    "",
+                    "Failed to access the 'breakpoints' entry in the Stylitron AST.",
                     ErrorAction::Restart,
                 ))
             }

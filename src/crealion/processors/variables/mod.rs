@@ -107,7 +107,7 @@ impl VariablesProcessor {
 
             // Find the first successful resolution result or report an error.
             let resolved_result = results.iter().find_map(|result| match result {
-                Ok(Some(v)) => Some(Ok(v.to_owned())),
+                Ok(Some(v)) => Some(Ok(format!("var({})", v))),
                 Err(err) => Some(Err(err.to_string())),
                 Ok(None) => None,
             });
@@ -440,7 +440,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "s7sj3d");
+        assert_eq!(resolved_value, "var(s7sj3d)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());
@@ -469,7 +469,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "d8373jd79");
+        assert_eq!(resolved_value, "var(d8373jd79)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());
@@ -498,7 +498,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "ch8725sdw2cs5w");
+        assert_eq!(resolved_value, "var(ch8725sdw2cs5w)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());
@@ -527,7 +527,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "d72jd5fkw54k5w");
+        assert_eq!(resolved_value, "var(d72jd5fkw54k5w)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());
@@ -556,7 +556,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "ste62jh");
+        assert_eq!(resolved_value, "var(ste62jh)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());
@@ -585,7 +585,7 @@ mod tests {
             .unwrap();
 
         // Assert resolved value (mock the result from the mocked functions)
-        assert_eq!(resolved_value, "d8373jd79");
+        assert_eq!(resolved_value, "var(d8373jd79)");
 
         // Ensure no alerts are generated
         assert!(alerts.is_empty());

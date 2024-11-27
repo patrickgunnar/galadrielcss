@@ -1,5 +1,5 @@
 use chrono::Local;
-use class::ContextType;
+use classes::ContextType;
 use futures::future::join_all;
 use nenyr::types::{
     ast::NenyrAst, central::CentralContext, layout::LayoutContext, module::ModuleContext,
@@ -11,11 +11,12 @@ use crate::{
     GaladrielResult,
 };
 
-mod breakpoint;
-mod class;
+mod breakpoints;
+mod classes;
 mod mocks;
 mod processors;
 mod utils;
+mod variables;
 
 type CrealionResult = GaladrielResult<(Option<Vec<ShellscapeAlerts>>, Option<Vec<String>>)>;
 
@@ -49,7 +50,11 @@ impl Crealion {
         let inherited_contexts: Vec<String> = vec![self.central_context_identifier.to_owned()];
 
         let futures = join_all(vec![
-            self.process_breakpoints(context.breakpoints.to_owned())
+            self.process_breakpoints(context.breakpoints.to_owned()),
+            self.process_variables(
+                self.central_context_identifier.to_owned(),
+                context.variables.to_owned(),
+            ),
         ])
         .await;
 
