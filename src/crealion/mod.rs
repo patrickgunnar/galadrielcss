@@ -11,6 +11,7 @@ use crate::{
     GaladrielResult,
 };
 
+mod animations;
 mod breakpoints;
 mod classes;
 mod mocks;
@@ -59,6 +60,39 @@ impl Crealion {
         .await;
 
         futures.iter().for_each(|result| match result {
+            Ok(alerts) => {
+                self.alerts.append(&mut alerts.to_vec());
+            }
+            Err(err) => {
+                self.alerts.push(ShellscapeAlerts::create_galadriel_error(
+                    Local::now(),
+                    GaladrielError::raise_general_other_error(
+                        ErrorKind::TaskFailure,
+                        &err.to_string(),
+                        ErrorAction::Notify,
+                    ),
+                ));
+            }
+        });
+
+        let animations_futures = join_all(context.animations.as_ref().map_or_else(
+            || vec![],
+            |animations| {
+                animations
+                    .iter()
+                    .map(|(_, animation)| {
+                        self.process_animation(
+                            self.central_context_identifier.to_owned(),
+                            inherited_contexts.to_vec(),
+                            animation.to_owned(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            },
+        ))
+        .await;
+
+        animations_futures.iter().for_each(|result| match result {
             Ok(alerts) => {
                 self.alerts.append(&mut alerts.to_vec());
             }

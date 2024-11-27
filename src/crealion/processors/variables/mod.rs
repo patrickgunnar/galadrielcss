@@ -64,7 +64,7 @@ impl VariablesProcessor {
     /// # Parameters
     /// - `value`: The string containing variables to resolve.
     /// - `property`: The property name related to the value.
-    /// - `class_name`: The class name using the value.
+    /// - `identifier`: The class name using the value.
     /// - `pattern`: The pattern name associated with the value.
     /// - `breakpoint`: Optional breakpoint context for the style.
     /// - `alerts`: A mutable reference to a vector for collecting alerts or warnings.
@@ -75,15 +75,16 @@ impl VariablesProcessor {
         &self,
         value: &str,
         property: &str,
-        class_name: &str,
+        identifier: &str,
         pattern: &str,
         breakpoint: &Option<String>,
         alerts: &mut Vec<ShellscapeAlerts>,
+        is_animation: bool,
     ) -> GaladrielResult<Option<String>> {
         tracing::info!(
             "Starting variable resolution for value: `{}` in class `{}`, property `{}`.",
             value,
-            class_name,
+            identifier,
             property
         );
 
@@ -107,7 +108,7 @@ impl VariablesProcessor {
 
             // Find the first successful resolution result or report an error.
             let resolved_result = results.iter().find_map(|result| match result {
-                Ok(Some(v)) => Some(Ok(format!("var({})", v))),
+                Ok(Some(v)) => Some(Ok(v.to_owned())),
                 Err(err) => Some(Err(err.to_string())),
                 Ok(None) => None,
             });
@@ -158,21 +159,29 @@ impl VariablesProcessor {
 
                     // If no resolution is found, log a warning and return `None`.
                     let formatted_property = camelify(&property);
-                    let formatted_pattern = pascalify(&pattern);
-                    let panoramic_message = breakpoint
-                        .as_ref()
-                        .map(|name| {
-                            format!(
-                            " This occurred in the `{}` breakpoint of the `PanoramicViewer` method.",
-                            name
-                        )
-                        })
-                        .unwrap_or_default();
 
-                    let message = format!(
-                        "The `{}` property in the `{}` class for the `{}` pattern references an unrecognized `{}` variable, preventing the style from being created. Please review and update the variable to ensure the style is generated correctly.{}",
-                        formatted_property, class_name, formatted_pattern, relative_name, panoramic_message
-                    );
+                    let message = if is_animation {
+                        format!(
+                            "The `{}` property in the `{}` animation references an undefined variable `{}`. This prevents the style from being generated. Please review and update the variable to ensure proper style creation.",
+                            formatted_property, identifier, relative_name
+                        )
+                    } else {
+                        let formatted_pattern = pascalify(&pattern);
+                        let panoramic_message = breakpoint
+                            .as_ref()
+                            .map(|name| {
+                                format!(
+                                " This occurred in the `{}` breakpoint of the `PanoramicViewer` method.",
+                                name
+                            )
+                            })
+                            .unwrap_or_default();
+
+                        format!(
+                            "The `{}` property in the `{}` class for the `{}` pattern references an unrecognized `{}` variable, preventing the style from being created. Please review and update the variable to ensure the style is generated correctly.{}",
+                            formatted_property, identifier, formatted_pattern, relative_name, panoramic_message
+                        )
+                    };
 
                     // Add the warning to the alerts vector.
                     alerts.insert(0, ShellscapeAlerts::create_warning(Local::now(), &message));
@@ -228,7 +237,7 @@ impl VariablesProcessor {
                                                     resolved_name
                                                 );
 
-                                                resolved_name.to_owned()
+                                                format!("var({resolved_name})")
                                             })
                                         },
                                     )
@@ -311,7 +320,7 @@ impl VariablesProcessor {
                             resolved_name
                         );
 
-                        resolved_name.to_owned()
+                        format!("var({resolved_name})")
                     })
                 })
         })
@@ -434,6 +443,7 @@ mod tests {
                 ":hover",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -463,6 +473,7 @@ mod tests {
                 ":hover",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -492,6 +503,7 @@ mod tests {
                 "_stylesheet",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -521,6 +533,7 @@ mod tests {
                 "_stylesheet",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -550,6 +563,7 @@ mod tests {
                 "_stylesheet",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -579,6 +593,7 @@ mod tests {
                 "_stylesheet",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .expect("Failed to process")
@@ -608,6 +623,7 @@ mod tests {
                 ":hover",
                 &None,
                 &mut alerts,
+                false,
             )
             .await
             .unwrap();

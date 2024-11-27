@@ -96,7 +96,15 @@ impl Crealion {
                 ) {
                     // Process variables and generate a utility class for valid styles.
                     Ok(new_property) => match variables_processor
-                        .process(&value, &property, class_name, &pattern, &breakpoint, alerts)
+                        .process(
+                            &value,
+                            &property,
+                            class_name,
+                            &pattern,
+                            &breakpoint,
+                            alerts,
+                            false,
+                        )
                         .await
                     {
                         Ok(Some(new_value)) => {
