@@ -70,26 +70,7 @@ impl Crealion {
             };
 
             // Transform the provided variable data into the expected format for STYLITRON.
-            let variables = variables_data
-                .iter()
-                .map(|(identifier, value)| {
-                    // Generate a unique variable name based on the context and identifier.
-                    let unique_var_name =
-                        generates_variable_or_animation_name(&context_name, &identifier, true);
-
-                    tracing::trace!(
-                        "Generated unique variable name '{}' for identifier '{}'.",
-                        unique_var_name,
-                        identifier
-                    );
-
-                    // Pair the identifier with the generated name and value.
-                    (
-                        identifier.to_owned(),
-                        vec![unique_var_name, value.to_owned()],
-                    )
-                })
-                .collect::<IndexMap<_, _>>();
+            let variables = Self::process_variables_data(variables_data, &context_name);
 
             // Match the `stylitron_data` to ensure it's of the expected type.
             match *stylitron_data {
@@ -118,5 +99,44 @@ impl Crealion {
                 context_name
             );
         })
+    }
+
+    /// Processes variable data by transforming identifiers into unique variable names
+    /// and associating them with their corresponding values.
+    ///
+    /// # Arguments
+    /// - `variables_data` - An `IndexMap` containing identifiers as keys and their
+    ///   respective values as strings.
+    /// - `context_name` - A string slice representing the name of the context
+    ///   to ensure the uniqueness of variable names.
+    ///
+    /// # Returns
+    /// An `IndexMap` where each key is the original identifier and the value is
+    /// a `Vec<String>` containing:
+    /// 1. A unique variable name based on the context and identifier.
+    /// 2. The original value associated with the identifier.
+    fn process_variables_data(
+        variables_data: IndexMap<String, String>,
+        context_name: &str,
+    ) -> IndexMap<String, Vec<String>> {
+        variables_data
+            .into_iter()
+            // Convert the map into an iterator over (key, value) pairs.
+            .map(|(identifier, value)| {
+                // Generate a unique variable name based on the context and identifier.
+                let unique_var_name =
+                    generates_variable_or_animation_name(&context_name, &identifier, true);
+
+                tracing::trace!(
+                    "Generated unique variable name '{}' for identifier '{}'.",
+                    unique_var_name,
+                    identifier
+                );
+
+                // Return a pair with the original identifier and a vector
+                // containing the unique name and the original value.
+                (identifier, vec![unique_var_name, value])
+            })
+            .collect()
     }
 }
