@@ -2,25 +2,34 @@ use std::path::PathBuf;
 
 use chrono::Local;
 use nenyr::NenyrParser;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     crealion::Crealion, error::GaladrielError, shellscape::alerts::ShellscapeAlerts,
     utils::resilient_reader::resilient_reader, GaladrielResult,
 };
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Formera {
     path: PathBuf,
     auto_naming: bool,
+    sender: UnboundedSender<ShellscapeAlerts>,
 }
 
 impl Formera {
-    pub fn new(path: PathBuf, auto_naming: bool) -> Self {
-        Self { path, auto_naming }
+    pub fn new(
+        path: PathBuf,
+        auto_naming: bool,
+        sender: UnboundedSender<ShellscapeAlerts>,
+    ) -> Self {
+        Self {
+            path,
+            auto_naming,
+            sender,
+        }
     }
 
-    pub async fn start(&mut self) -> GaladrielResult<Vec<ShellscapeAlerts>> {
-        let mut alerts = vec![];
+    pub async fn start(&mut self) -> GaladrielResult<()> {
         let start_time = Local::now();
         let raw_content = resilient_reader(&self.path).await?;
         let raw_content = self.process_names_injection(raw_content)?;
@@ -32,16 +41,14 @@ impl Formera {
             .parse()
             .map_err(|err| GaladrielError::raise_nenyr_error(start_time, err))?;
 
-        let mut crealion = Crealion::new(parsed_ast, path.into());
+        let mut crealion = Crealion::new(self.sender.clone(), parsed_ast, path.into());
 
         match crealion.create().await {
-            Ok((Some(my_alerts), None)) => {
-                alerts.append(&mut my_alerts.to_vec());
-            }
+            Ok(None) => {}
             _ => {}
         }
 
-        Ok(alerts)
+        Ok(())
     }
 
     pub fn process_names_injection(&self, raw_content: String) -> GaladrielResult<String> {

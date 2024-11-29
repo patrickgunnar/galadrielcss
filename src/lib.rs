@@ -12,7 +12,15 @@ use lothlorien::LothlorienPipeline;
 use shellscape::{
     alerts::ShellscapeAlerts, app::ShellscapeApp, commands::ShellscapeCommands, Shellscape,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, net::TcpListener, sync::RwLock};
+use tokio::{
+    fs::OpenOptions,
+    io::AsyncWriteExt,
+    net::TcpListener,
+    sync::{
+        mpsc::{self, UnboundedSender},
+        RwLock,
+    },
+};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -140,6 +148,8 @@ impl GaladrielRuntime {
     }
 
     async fn development_runtime(&mut self) -> GaladrielResult<()> {
+        let (alerts_sender, mut alerts_receiver) = mpsc::unbounded_channel::<ShellscapeAlerts>();
+
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
@@ -182,6 +192,9 @@ impl GaladrielRuntime {
             // TODO: Implement comprehensive error handling for potential issues here, designing a robust mechanism to manage different error types effectively.
 
             tokio::select! {
+                alerts_res = alerts_receiver.recv() => {
+                    self.match_alerts_events(alerts_res, &mut shellscape_app);
+                }
                 // Handle events from the Lothlórien pipeline.
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
@@ -228,6 +241,7 @@ impl GaladrielRuntime {
                                 event,
                                 &mut shellscape_app,
                                 Arc::clone(&atomically_matcher),
+                                alerts_sender.clone()
                             ).await;
                         }
                         // Handle errors from the Barad-dûr observer and notify the application.
@@ -368,6 +382,19 @@ impl GaladrielRuntime {
         Ok(())
     }
 
+    fn match_alerts_events(
+        &mut self,
+        event: Option<ShellscapeAlerts>,
+        shellscape_app: &mut ShellscapeApp,
+    ) {
+        match event {
+            Some(alert) => {
+                shellscape_app.add_alert(alert);
+            }
+            None => {}
+        }
+    }
+
     /// Asynchronously handles incoming observer events and updates the Shellscape app
     /// based on the received `GaladrielEvents`.
     ///
@@ -380,6 +407,7 @@ impl GaladrielRuntime {
         event: GaladrielEvents,
         shellscape_app: &mut ShellscapeApp,
         atomically_matcher: Arc<RwLock<overrides::Override>>,
+        sender: UnboundedSender<ShellscapeAlerts>,
     ) {
         match event {
             // If a notification event is received, add it directly to the Shellscape app.
@@ -396,10 +424,10 @@ impl GaladrielRuntime {
 
                 shellscape_app.add_alert(notification);
 
-                let mut formera = Formera::new(path, self.configatron.get_auto_naming());
+                let mut formera = Formera::new(path, self.configatron.get_auto_naming(), sender);
 
                 match formera.start().await {
-                    Ok(alerts) => {
+                    Ok(()) => {
                         let ending_time = Local::now();
                         let duration = ending_time - start_time;
                         let notification = ShellscapeAlerts::create_success(
@@ -409,7 +437,6 @@ impl GaladrielRuntime {
                             &format!("Successfully parsed Nenyr file: {:?}", stringified_path),
                         );
 
-                        shellscape_app.add_alerts_vec(&mut alerts.to_vec());
                         shellscape_app.add_alert(notification);
 
                         //println!("{:?}\n", *STYLITRON);

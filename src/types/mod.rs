@@ -13,8 +13,8 @@ pub enum Stylitron {
     Aliases(IndexMap<String, IndexMap<String, String>>),
     Breakpoints(IndexMap<String, IndexMap<String, String>>),
     Typefaces(IndexMap<String, String>),
-    Variables(IndexMap<String, IndexMap<String, IndexMap<String, String>>>),
-    Themes(IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, String>>>>),
+    Variables(IndexMap<String, IndexMap<String, Vec<String>>>),
+    Themes(IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>),
     Animation(
         IndexMap<
             String,

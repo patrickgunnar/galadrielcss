@@ -2,6 +2,7 @@
 /mocks
 /logs
 /luna
+/src/crealion_old
 
 galadriel.config.json
 layout.nyr
