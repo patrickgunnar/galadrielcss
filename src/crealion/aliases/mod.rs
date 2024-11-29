@@ -97,3 +97,198 @@ impl Crealion {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON, crealion::Crealion, shellscape::alerts::ShellscapeAlerts, types::Stylitron,
+    };
+
+    fn mock_aliases() -> IndexMap<String, String> {
+        IndexMap::from([
+            ("bgd".to_string(), "background-color".to_string()),
+            ("dsp".to_string(), "display".to_string()),
+            ("br".to_string(), "border".to_string()),
+            ("wd".to_string(), "width".to_string()),
+        ])
+    }
+
+    #[tokio::test]
+    async fn test_apply_aliases_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_aliases_to_stylitron("myContextName1".to_string(), mock_aliases())
+            .await;
+
+        let result = STYLITRON
+            .get("aliases")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Aliases(aliases_definitions) => aliases_definitions
+                    .get("myContextName1")
+                    .and_then(|context_aliases| Some(context_aliases.to_owned())),
+                _ => None,
+            });
+
+        assert!(result.is_some());
+
+        let aliases = result.unwrap();
+
+        assert_eq!(aliases, mock_aliases());
+    }
+
+    #[tokio::test]
+    async fn test_apply_aliases_to_existing_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Pre-populate the STYLITRON AST with existing data.
+        let initial_data = IndexMap::from([(
+            "myContextName3".to_string(),
+            IndexMap::from([("animeName".to_string(), "animation-name".to_string())]),
+        )]);
+
+        STYLITRON.insert("aliases".to_string(), Stylitron::Aliases(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_aliases_to_stylitron("myContextName3".to_string(), mock_aliases())
+            .await;
+
+        let result = STYLITRON
+            .get("aliases")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Aliases(aliases_definitions) => {
+                    aliases_definitions.get("myContextName3").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let aliases = result.unwrap();
+
+        // Verify that the context was updated correctly.
+        assert_eq!(aliases, mock_aliases());
+    }
+
+    #[tokio::test]
+    async fn test_apply_aliases_to_new_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Ensure no existing context in the STYLITRON AST.
+        let initial_data = IndexMap::new();
+        STYLITRON.insert("aliases".to_string(), Stylitron::Aliases(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_aliases_to_stylitron("newContextName".to_string(), mock_aliases())
+            .await;
+
+        let result = STYLITRON
+            .get("aliases")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Aliases(aliases_definitions) => {
+                    aliases_definitions.get("newContextName").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let aliases = result.unwrap();
+
+        // Verify that the new context was added with correct aliases.
+        assert_eq!(aliases, mock_aliases());
+    }
+
+    #[tokio::test]
+    async fn test_apply_aliases_with_empty_aliases_data() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let empty_aliases: IndexMap<String, String> = IndexMap::new();
+        let _ = crealion
+            .apply_aliases_to_stylitron("emptyAliasesContext".to_string(), empty_aliases.clone())
+            .await;
+
+        let result = STYLITRON
+            .get("aliases")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Aliases(aliases_definitions) => {
+                    aliases_definitions.get("emptyAliasesContext").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let aliases = result.unwrap();
+
+        // Verify that the context was added but remains empty.
+        assert_eq!(aliases, empty_aliases);
+    }
+
+    #[tokio::test]
+    async fn test_apply_aliases_no_aliases_section() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+
+        // Simulate an empty STYLITRON AST to trigger an error.
+        STYLITRON.remove("aliases");
+
+        let crealion = Crealion::new(
+            sender.clone(),
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_aliases_to_stylitron("noAliasSection".to_string(), mock_aliases())
+            .await;
+
+        // Verify that an error notification was sent.
+        if let Some(notification) = receiver.recv().await {
+            if let ShellscapeAlerts::GaladrielError {
+                start_time: _,
+                error,
+            } = notification
+            {
+                assert_eq!(
+                    error.get_message(),
+                    "Failed to access the aliases section in STYLITRON AST".to_string()
+                );
+            }
+        } else {
+            panic!("Expected an error notification, but none was received.");
+        }
+    }
+}

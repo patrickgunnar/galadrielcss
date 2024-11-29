@@ -140,3 +140,227 @@ impl Crealion {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON,
+        crealion::{
+            utils::generates_variable_or_animation_name::generates_variable_or_animation_name,
+            Crealion,
+        },
+        shellscape::alerts::ShellscapeAlerts,
+        types::Stylitron,
+    };
+
+    fn mock_variables() -> IndexMap<String, String> {
+        IndexMap::from([
+            ("myVarOne".to_string(), "128px".to_string()),
+            ("myVarTwo".to_string(), "#000000".to_string()),
+            ("myVarThree".to_string(), "rgb(255, 255, 255)".to_string()),
+            ("myVarFour".to_string(), "1024vw".to_string()),
+        ])
+    }
+
+    fn transform_variables(
+        variables: IndexMap<String, String>,
+        context_name: &str,
+    ) -> IndexMap<String, Vec<String>> {
+        variables
+            .into_iter()
+            .map(|(identifier, value)| {
+                let unique_name =
+                    generates_variable_or_animation_name(context_name, &identifier, true);
+
+                (identifier, vec![unique_name, value])
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_apply_variables_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_variables("myContextName1".to_string(), mock_variables())
+            .await;
+
+        let result = STYLITRON
+            .get("variables")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Variables(variables_definitions) => variables_definitions
+                    .get("myContextName1")
+                    .and_then(|context_variables| Some(context_variables.to_owned())),
+                _ => None,
+            });
+
+        assert!(result.is_some());
+
+        let variables = result.unwrap();
+        let expected_variables = transform_variables(mock_variables(), "myContextName1");
+
+        assert_eq!(variables, expected_variables);
+    }
+
+    #[tokio::test]
+    async fn test_apply_variables_to_existing_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Pre-populate the STYLITRON AST with existing data.
+        let initial_data = IndexMap::from([(
+            "myContextName3".to_string(),
+            IndexMap::from([(
+                "myFakeVar".to_string(),
+                vec!["--sm4edk34d".to_string(), "#000".to_string()],
+            )]),
+        )]);
+
+        STYLITRON.insert("variables".to_string(), Stylitron::Variables(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_variables("myContextName3".to_string(), mock_variables())
+            .await;
+
+        let result = STYLITRON
+            .get("variables")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Variables(variables_definitions) => {
+                    variables_definitions.get("myContextName3").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let variables = result.unwrap();
+        let expected_variables = transform_variables(mock_variables(), "myContextName3");
+
+        // Verify that the context was updated correctly.
+        assert_eq!(variables, expected_variables);
+    }
+
+    #[tokio::test]
+    async fn test_apply_variables_to_new_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Ensure no existing context in the STYLITRON AST.
+        let initial_data = IndexMap::new();
+        STYLITRON.insert("variables".to_string(), Stylitron::Variables(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_variables("newContextName".to_string(), mock_variables())
+            .await;
+
+        let result = STYLITRON
+            .get("variables")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Variables(variables_definitions) => {
+                    variables_definitions.get("newContextName").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let variables = result.unwrap();
+        let expected_variables = transform_variables(mock_variables(), "newContextName");
+
+        // Verify that the new context was added with correct variables.
+        assert_eq!(variables, expected_variables);
+    }
+
+    #[tokio::test]
+    async fn test_apply_variables_with_empty_variables_data() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let empty_variables: IndexMap<String, String> = IndexMap::new();
+        let _ = crealion
+            .process_variables("emptyVariablesContext".to_string(), empty_variables.clone())
+            .await;
+
+        let result = STYLITRON
+            .get("variables")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Variables(variables_definitions) => {
+                    variables_definitions.get("emptyVariablesContext").cloned()
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+
+        let variables = result.unwrap();
+        let empty_variables: IndexMap<String, Vec<String>> = IndexMap::new();
+
+        // Verify that the context was added but remains empty.
+        assert_eq!(variables, empty_variables);
+    }
+
+    #[tokio::test]
+    async fn test_apply_variables_no_variables_section() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+
+        // Simulate an empty STYLITRON AST to trigger an error.
+        STYLITRON.remove("variables");
+
+        let crealion = Crealion::new(
+            sender.clone(),
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_variables("noAliasSection".to_string(), mock_variables())
+            .await;
+
+        // Verify that an error notification was sent.
+        if let Some(notification) = receiver.recv().await {
+            if let ShellscapeAlerts::GaladrielError {
+                start_time: _,
+                error,
+            } = notification
+            {
+                assert_eq!(
+                    error.get_message(),
+                    "Failed to access the variables section in STYLITRON AST".to_string()
+                );
+            }
+        } else {
+            panic!("Expected an error notification, but none was received.");
+        }
+    }
+}

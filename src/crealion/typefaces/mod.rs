@@ -83,3 +83,203 @@ impl Crealion {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON, crealion::Crealion, shellscape::alerts::ShellscapeAlerts, types::Stylitron,
+    };
+
+    fn mock_typefaces() -> IndexMap<String, String> {
+        IndexMap::from([
+            (
+                "myTypefaceOne".to_string(),
+                "../typefaces/showa-source-curry.regular-webfont.eot".to_string(),
+            ),
+            (
+                "myTypefaceTwo".to_string(),
+                "../typefaces/showa-source-curry.regular-webfont.svg".to_string(),
+            ),
+            (
+                "myTypefaceThree".to_string(),
+                "../typefaces/showa-source-curry.regular-webfont.ttf".to_string(),
+            ),
+            (
+                "myTypefaceFour".to_string(),
+                "../typefaces/showa-source-curry.regular-webfont.woff".to_string(),
+            ),
+        ])
+    }
+
+    #[tokio::test]
+    async fn test_apply_typefaces_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_typefaces_to_stylitron(mock_typefaces())
+            .await;
+
+        let result = STYLITRON
+            .get("typefaces")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Typefaces(typefaces_definitions) => {
+                    Some(typefaces_definitions.to_owned())
+                }
+                _ => None,
+            });
+
+        assert!(result.is_some());
+
+        let typefaces = result.unwrap();
+
+        assert_eq!(typefaces, mock_typefaces());
+    }
+
+    #[tokio::test]
+    async fn test_apply_typefaces_to_existing_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Pre-populate the STYLITRON AST with existing data.
+        let initial_data =
+            IndexMap::from([("animeName".to_string(), "animation-name".to_string())]);
+
+        STYLITRON.insert("typefaces".to_string(), Stylitron::Typefaces(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_typefaces_to_stylitron(mock_typefaces())
+            .await;
+
+        let result = STYLITRON
+            .get("typefaces")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Typefaces(typefaces_definitions) => Some(typefaces_definitions.clone()),
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let typefaces = result.unwrap();
+
+        // Verify that the context was updated correctly.
+        assert_eq!(typefaces, mock_typefaces());
+    }
+
+    #[tokio::test]
+    async fn test_apply_typefaces_to_new_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Ensure no existing context in the STYLITRON AST.
+        let initial_data = IndexMap::new();
+        STYLITRON.insert("typefaces".to_string(), Stylitron::Typefaces(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_typefaces_to_stylitron(mock_typefaces())
+            .await;
+
+        let result = STYLITRON
+            .get("typefaces")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Typefaces(typefaces_definitions) => Some(typefaces_definitions.clone()),
+                _ => None,
+            });
+
+        assert!(result.is_some());
+        let typefaces = result.unwrap();
+
+        // Verify that the new context was added with correct typefaces.
+        assert_eq!(typefaces, mock_typefaces());
+    }
+
+    #[tokio::test]
+    async fn test_apply_typefaces_with_empty_typefaces_data() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let empty_typefaces: IndexMap<String, String> = IndexMap::new();
+        let _ = crealion
+            .apply_typefaces_to_stylitron(empty_typefaces.clone())
+            .await;
+
+        let result = STYLITRON
+            .get("typefaces")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Typefaces(typefaces_definitions) => Some(typefaces_definitions.clone()),
+                _ => None,
+            });
+
+        println!("{:?}", result);
+        assert!(result.is_some());
+        let typefaces = result.unwrap();
+
+        // Verify that the context was added but remains empty.
+        assert_eq!(typefaces, empty_typefaces);
+    }
+
+    #[tokio::test]
+    async fn test_apply_typefaces_no_typefaces_section() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+
+        // Simulate an empty STYLITRON AST to trigger an error.
+        STYLITRON.remove("typefaces");
+
+        let crealion = Crealion::new(
+            sender.clone(),
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .apply_typefaces_to_stylitron(mock_typefaces())
+            .await;
+
+        // Verify that an error notification was sent.
+        if let Some(notification) = receiver.recv().await {
+            if let ShellscapeAlerts::GaladrielError {
+                start_time: _,
+                error,
+            } = notification
+            {
+                assert_eq!(
+                    error.get_message(),
+                    "Failed to access the typefaces section in STYLITRON AST".to_string()
+                );
+            }
+        } else {
+            panic!("Expected an error notification, but none was received.");
+        }
+    }
+}

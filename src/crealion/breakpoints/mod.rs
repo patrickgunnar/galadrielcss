@@ -133,3 +133,275 @@ impl Crealion {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON, crealion::Crealion, shellscape::alerts::ShellscapeAlerts, types::Stylitron,
+    };
+
+    use super::BreakpointType;
+
+    fn mock_breakpoints() -> (IndexMap<String, String>, IndexMap<String, String>) {
+        let mobile_data = IndexMap::from([
+            ("sm".to_string(), "320px".to_string()),
+            ("md".to_string(), "640px".to_string()),
+            ("xl".to_string(), "1280px".to_string()),
+            ("xx".to_string(), "2560px".to_string()),
+        ]);
+
+        let desktop_data = IndexMap::from([
+            ("sm".to_string(), "320px".to_string()),
+            ("md".to_string(), "640px".to_string()),
+            ("xl".to_string(), "1280px".to_string()),
+            ("xx".to_string(), "2560px".to_string()),
+        ]);
+
+        (mobile_data, desktop_data)
+    }
+
+    fn format_breakpoints(
+        breakpoints: IndexMap<String, String>,
+        breakpoint_type: BreakpointType,
+    ) -> IndexMap<String, String> {
+        let schema_type = match breakpoint_type {
+            BreakpointType::MobileFirst => "min-width",
+            BreakpointType::DesktopFirst => "max-width",
+        };
+
+        breakpoints
+            .into_iter()
+            .map(|(identifier, value)| (identifier, format!("{}:{}", schema_type, value)))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_apply_breakpoints_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let (mobile_data, desktop_data) = mock_breakpoints();
+        let _ = crealion
+            .process_breakpoints(Some(mobile_data.clone()), Some(desktop_data.clone()))
+            .await;
+
+        let result =
+            STYLITRON
+                .get("breakpoints")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Breakpoints(breakpoints_definitions) => {
+                        Some(breakpoints_definitions.to_owned())
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+
+        let breakpoints = result.unwrap();
+        let expected_result = IndexMap::from([
+            (
+                "mobile-first".to_string(),
+                format_breakpoints(mobile_data, BreakpointType::MobileFirst),
+            ),
+            (
+                "desktop-first".to_string(),
+                format_breakpoints(desktop_data, BreakpointType::DesktopFirst),
+            ),
+        ]);
+
+        assert_eq!(breakpoints, expected_result);
+    }
+
+    #[tokio::test]
+    async fn test_apply_breakpoints_to_existing_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Pre-populate the STYLITRON AST with existing data.
+        let initial_data = IndexMap::from([(
+            "mobile-first".to_string(),
+            IndexMap::from([("myFakeBreakpoint".to_string(), "1024px".to_string())]),
+        )]);
+
+        STYLITRON.insert(
+            "breakpoints".to_string(),
+            Stylitron::Breakpoints(initial_data),
+        );
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let (mobile_data, desktop_data) = mock_breakpoints();
+        let _ = crealion
+            .process_breakpoints(Some(mobile_data.clone()), Some(desktop_data.clone()))
+            .await;
+
+        let result =
+            STYLITRON
+                .get("breakpoints")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Breakpoints(breakpoints_definitions) => {
+                        Some(breakpoints_definitions.clone())
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+        let breakpoints = result.unwrap();
+        let expected_result = IndexMap::from([
+            (
+                "mobile-first".to_string(),
+                format_breakpoints(mobile_data, BreakpointType::MobileFirst),
+            ),
+            (
+                "desktop-first".to_string(),
+                format_breakpoints(desktop_data, BreakpointType::DesktopFirst),
+            ),
+        ]);
+
+        // Verify that the context was updated correctly.
+        assert_eq!(breakpoints, expected_result);
+    }
+
+    #[tokio::test]
+    async fn test_apply_breakpoints_to_new_context() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Ensure no existing context in the STYLITRON AST.
+        let initial_data = IndexMap::new();
+        STYLITRON.insert(
+            "breakpoints".to_string(),
+            Stylitron::Breakpoints(initial_data),
+        );
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let (mobile_data, desktop_data) = mock_breakpoints();
+        let _ = crealion
+            .process_breakpoints(Some(mobile_data.clone()), Some(desktop_data.clone()))
+            .await;
+
+        let result =
+            STYLITRON
+                .get("breakpoints")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Breakpoints(breakpoints_definitions) => {
+                        Some(breakpoints_definitions.clone())
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+        let breakpoints = result.unwrap();
+        let expected_result = IndexMap::from([
+            (
+                "mobile-first".to_string(),
+                format_breakpoints(mobile_data, BreakpointType::MobileFirst),
+            ),
+            (
+                "desktop-first".to_string(),
+                format_breakpoints(desktop_data, BreakpointType::DesktopFirst),
+            ),
+        ]);
+
+        // Verify that the new context was added with correct breakpoints.
+        assert_eq!(breakpoints, expected_result);
+    }
+
+    #[tokio::test]
+    async fn test_apply_breakpoints_with_empty_breakpoints_data() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let empty_breakpoints: IndexMap<String, String> = IndexMap::new();
+        let _ = crealion
+            .process_breakpoints(
+                Some(empty_breakpoints.clone()),
+                Some(empty_breakpoints.clone()),
+            )
+            .await;
+
+        let result =
+            STYLITRON
+                .get("breakpoints")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Breakpoints(breakpoints_definitions) => {
+                        Some(breakpoints_definitions.clone())
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+        let breakpoints = result.unwrap();
+        let empty_breakpoints: IndexMap<String, IndexMap<String, String>> = IndexMap::from([
+            ("mobile-first".to_string(), IndexMap::new()),
+            ("desktop-first".to_string(), IndexMap::new()),
+        ]);
+
+        // Verify that the context was added but remains empty.
+        assert_eq!(breakpoints, empty_breakpoints);
+    }
+
+    #[tokio::test]
+    async fn test_apply_breakpoints_no_breakpoints_section() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+
+        // Simulate an empty STYLITRON AST to trigger an error.
+        STYLITRON.remove("breakpoints");
+
+        let crealion = Crealion::new(
+            sender.clone(),
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let (mobile_data, desktop_data) = mock_breakpoints();
+        let _ = crealion
+            .process_breakpoints(Some(mobile_data), Some(desktop_data))
+            .await;
+
+        // Verify that an error notification was sent.
+        if let Some(notification) = receiver.recv().await {
+            if let ShellscapeAlerts::GaladrielError {
+                start_time: _,
+                error,
+            } = notification
+            {
+                assert_eq!(
+                    error.get_message(),
+                    "Failed to access the breakpoints section in STYLITRON AST".to_string()
+                );
+            }
+        } else {
+            panic!("Expected an error notification, but none was received.");
+        }
+    }
+}
