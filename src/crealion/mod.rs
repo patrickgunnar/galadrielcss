@@ -17,6 +17,7 @@ mod animations;
 mod breakpoints;
 mod classes;
 mod imports;
+mod processors;
 mod themes;
 mod typefaces;
 mod utils;
@@ -116,8 +117,7 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_animations(&context_name, &inherited_contexts, animations_data)
-            .await;
+        self.process_animations(&context_name, &inherited_contexts, animations_data);
 
         let classes_data = self.get_value(
             context.classes.as_ref().map(|v| v.to_owned()),
@@ -173,8 +173,7 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_animations(&context_name, &inherited_contexts, animations_data)
-            .await;
+        self.process_animations(&context_name, &inherited_contexts, animations_data);
 
         let classes_data = self.get_value(
             context.classes.as_ref().map(|v| v.to_owned()),
@@ -225,8 +224,7 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_animations(&context_name, &inherited_contexts, animations_data)
-            .await;
+        self.process_animations(&context_name, &inherited_contexts, animations_data);
 
         let classes_data = self.get_value(
             context.classes.as_ref().map(|v| v.to_owned()),

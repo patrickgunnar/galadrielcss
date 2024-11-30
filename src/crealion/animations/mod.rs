@@ -10,11 +10,23 @@ use crate::{
 };
 
 use super::{
-    utils::generates_variable_or_animation_name::generates_variable_or_animation_name, Crealion,
+    processors::{aliases::resolve_alias_identifier, variables::resolve_variable_from_str},
+    utils::{
+        generates_variable_or_animation_name::generates_variable_or_animation_name,
+        pascalify::pascalify,
+    },
+    Crealion,
 };
 
 impl Crealion {
-    pub async fn process_animations(
+    /// Processes animations for the specified context by iterating through animation data
+    /// and delegating processing based on the animation kind.
+    ///
+    /// # Parameters
+    /// - `context_name`: The name of the current context where the animations are being applied.
+    /// - `inherited_contexts`: A list of inherited context names to consider during processing.
+    /// - `animations_data`: A map containing animation data, keyed by animation name.
+    pub fn process_animations(
         &self,
         context_name: &str,
         inherited_contexts: &Vec<String>,
@@ -22,12 +34,34 @@ impl Crealion {
     ) {
         let sender = self.sender.clone();
 
+        tracing::info!(
+            "Starting to process animations for context `{}` with {} inherited contexts and {} animations.",
+            context_name,
+            inherited_contexts.len(),
+            animations_data.len(),
+        );
+
+        // Iterate through the animations data.
         animations_data.into_values().for_each(|animation| {
             let animation_name = animation.animation_name;
             let animation_kind = animation.kind.unwrap_or(NenyrAnimationKind::None);
 
+            tracing::debug!(
+                "Processing animation `{}` of kind `{:?}` in context `{}`.",
+                animation_name,
+                animation_kind,
+                context_name,
+            );
+
+            // Handle each kind of animation separately.
             match animation_kind {
                 NenyrAnimationKind::Fraction => {
+                    tracing::trace!(
+                        "Delegating to `process_fraction_animation` for animation `{}`.",
+                        animation_name,
+                    );
+
+                    // Process fraction-based animations.
                     self.process_fraction_animation(
                         &animation_name,
                         context_name,
@@ -36,7 +70,14 @@ impl Crealion {
                     );
                 }
                 NenyrAnimationKind::Progressive => {
+                    // Process progressive animations, using the provided progressive size or defaulting to 0.
                     let progressive_size = animation.progressive_count.unwrap_or(0);
+
+                    tracing::trace!(
+                        "Delegating to `process_progressive_animation` for animation `{}` with progressive size `{}`.",
+                        animation_name,
+                        progressive_size,
+                    );
 
                     self.process_progressive_animation(
                         &animation_name,
@@ -47,6 +88,12 @@ impl Crealion {
                     );
                 }
                 NenyrAnimationKind::Transitive => {
+                    tracing::trace!(
+                        "Delegating to `process_transitive_animation` for animation `{}`.",
+                        animation_name,
+                    );
+
+                    // Process transitive animations.
                     self.process_transitive_animation(
                         &animation_name,
                         context_name,
@@ -55,6 +102,13 @@ impl Crealion {
                     );
                 }
                 NenyrAnimationKind::None => {
+                    tracing::warn!(
+                        "Animation `{}` in context `{}` has no kind defined. Applying as an empty animation.",
+                        animation_name,
+                        context_name,
+                    );
+
+                    // Apply an empty animation and issue a warning about it.
                     self.apply_animation_to_stylitron(
                         &animation_name,
                         context_name,
@@ -70,13 +124,25 @@ impl Crealion {
                     );
 
                     if let Err(err) = sender.send(warning) {
-                        tracing::error!("{:?}", err);
+                        tracing::error!("Failed to send warning notification: {:?}", err);
                     }
                 }
             }
         });
+
+        tracing::info!(
+            "Completed processing animations for context `{}`.",
+            context_name
+        );
     }
 
+    /// Processes animations defined with fractional stops.
+    ///
+    /// # Parameters
+    /// - `animation_name`: The name of the animation.
+    /// - `context_name`: The current context name.
+    /// - `inherited_contexts`: A list of inherited context names.
+    /// - `keyframes`: A vector of keyframes defining the animation.
     fn process_fraction_animation(
         &self,
         animation_name: &str,
@@ -84,6 +150,14 @@ impl Crealion {
         inherited_contexts: &Vec<String>,
         keyframes: Vec<NenyrKeyframe>,
     ) {
+        tracing::info!(
+            "Processing fraction animation `{}` in context `{}` with {} keyframes.",
+            animation_name,
+            context_name,
+            keyframes.len(),
+        );
+
+        // Transform keyframes into a format suitable for Stylitron.
         let transformed_keyframes = keyframes
             .into_iter()
             .filter_map(|keyframe| {
@@ -101,16 +175,42 @@ impl Crealion {
                         properties,
                     );
 
+                    tracing::trace!(
+                        "Processed keyframe with stops `{}` for animation `{}`.",
+                        fraction_stops,
+                        animation_name,
+                    );
+
                     return Some((fraction_stops, processed_properties));
                 }
+
+                tracing::warn!(
+                    "Skipped invalid keyframe for fraction animation `{}` in context `{}`.",
+                    animation_name,
+                    context_name,
+                );
 
                 None
             })
             .collect::<IndexMap<String, IndexMap<String, String>>>();
 
+        // Apply the transformed keyframes to Stylitron.
         self.apply_animation_to_stylitron(animation_name, context_name, transformed_keyframes);
+
+        tracing::info!(
+            "Fraction animation `{}` processed and applied to Stylitron.",
+            animation_name
+        );
     }
 
+    /// Processes animations defined with progressive stops.
+    ///
+    /// # Parameters
+    /// - `animation_name`: The name of the animation.
+    /// - `progressive_size`: The number of progressive steps in the animation.
+    /// - `context_name`: The current context name.
+    /// - `inherited_contexts`: A list of inherited context names.
+    /// - `keyframes`: A vector of keyframes defining the animation.
     fn process_progressive_animation(
         &self,
         animation_name: &str,
@@ -119,6 +219,15 @@ impl Crealion {
         inherited_contexts: &Vec<String>,
         keyframes: Vec<NenyrKeyframe>,
     ) {
+        tracing::info!(
+            "Processing progressive animation `{}` in context `{}` with size `{}` and {} keyframes.",
+            animation_name,
+            context_name,
+            progressive_size,
+            keyframes.len(),
+        );
+
+        // Calculate the percentage increment for each step of the progressive animation.
         let progressive_value = if progressive_size == 1 {
             100.0
         } else if progressive_size > 1 {
@@ -127,6 +236,7 @@ impl Crealion {
             0.0
         };
 
+        // Transform keyframes into a format suitable for Stylitron.
         let transformed_keyframes = keyframes
             .into_iter()
             .enumerate()
@@ -140,16 +250,42 @@ impl Crealion {
                         properties,
                     );
 
+                    tracing::trace!(
+                        "Processed keyframe `{}` for progressive animation `{}`.",
+                        progressive_stop,
+                        animation_name,
+                    );
+
                     return Some((progressive_stop, processed_properties));
                 }
+
+                tracing::warn!(
+                    "Skipped invalid keyframe for progressive animation `{}` in context `{}`.",
+                    animation_name,
+                    context_name,
+                );
 
                 None
             })
             .collect::<IndexMap<String, IndexMap<String, String>>>();
 
+        // Apply the transformed keyframes to Stylitron.
         self.apply_animation_to_stylitron(animation_name, context_name, transformed_keyframes);
+
+        tracing::info!(
+            "Progressive animation `{}` processed and applied to Stylitron.",
+            animation_name,
+        );
     }
 
+    /// Processes and applies a transitive animation by transforming its keyframes
+    /// and integrating it into the STYLITRON AST.
+    ///
+    /// # Arguments
+    /// - `animation_name` - The name of the animation to be processed.
+    /// - `context_name` - The name of the current context in which the animation resides.
+    /// - `inherited_contexts` - A list of inherited contexts used for resolving aliases and variables.
+    /// - `keyframes` - A vector of `NenyrKeyframe` objects representing the animation's keyframes.
     fn process_transitive_animation(
         &self,
         animation_name: &str,
@@ -157,11 +293,26 @@ impl Crealion {
         inherited_contexts: &Vec<String>,
         keyframes: Vec<NenyrKeyframe>,
     ) {
+        tracing::info!(
+            "Starting transitive animation processing: animation_name={}, context_name={}",
+            animation_name,
+            context_name
+        );
+
+        // Transform keyframes into a format suitable for the STYLITRON AST.
         let transformed_keyframes = keyframes
             .into_iter()
             .filter_map(|keyframe| {
+                tracing::debug!(
+                    "Processing keyframe for animation '{}', context '{}': {:?}",
+                    animation_name,
+                    context_name,
+                    keyframe
+                );
+
                 match keyframe {
                     NenyrKeyframe::From(properties) => {
+                        // Process "From" keyframe properties.
                         let processed_properties = self.process_animation_properties(
                             animation_name,
                             context_name,
@@ -169,9 +320,17 @@ impl Crealion {
                             properties,
                         );
 
+                        tracing::debug!(
+                            "Mapped 'From' keyframe to '0%' for animation '{}': {:?}",
+                            animation_name,
+                            processed_properties
+                        );
+
+                        // Map the keyframe to "0%" timing.
                         return Some(("0%".to_string(), processed_properties));
                     }
                     NenyrKeyframe::Halfway(properties) => {
+                        // Process "Halfway" keyframe properties.
                         let processed_properties = self.process_animation_properties(
                             animation_name,
                             context_name,
@@ -179,9 +338,17 @@ impl Crealion {
                             properties,
                         );
 
+                        tracing::debug!(
+                            "Mapped 'Halfway' keyframe to '50%' for animation '{}': {:?}",
+                            animation_name,
+                            processed_properties
+                        );
+
+                        // Map the keyframe to "50%" timing.
                         return Some(("50%".to_string(), processed_properties));
                     }
                     NenyrKeyframe::To(properties) => {
+                        // Process "To" keyframe properties.
                         let processed_properties = self.process_animation_properties(
                             animation_name,
                             context_name,
@@ -189,6 +356,13 @@ impl Crealion {
                             properties,
                         );
 
+                        tracing::debug!(
+                            "Mapped 'To' keyframe to '100%' for animation '{}': {:?}",
+                            animation_name,
+                            processed_properties
+                        );
+
+                        // Map the keyframe to "100%" timing.
                         return Some(("100%".to_string(), processed_properties));
                     }
                     _ => {}
@@ -198,24 +372,114 @@ impl Crealion {
             })
             .collect::<IndexMap<String, IndexMap<String, String>>>();
 
+        // Apply the transformed animation keyframes to the STYLITRON AST.
         self.apply_animation_to_stylitron(animation_name, context_name, transformed_keyframes);
+
+        tracing::info!(
+            "Transitive animation `{}` processed and applied to Stylitron.",
+            animation_name,
+        );
     }
 
+    /// Processes the properties of an animation keyframe by resolving aliases
+    /// and variables based on inherited contexts.
+    ///
+    /// # Arguments
+    /// - `animation_name` - The name of the animation.
+    /// - `context_name` - The name of the current context.
+    /// - `inherited_contexts` - A list of inherited contexts for resolving identifiers.
+    /// - `properties` - The keyframe properties to process.
+    ///
+    /// # Returns
+    /// An `IndexMap` containing resolved property-value pairs.
     fn process_animation_properties(
         &self,
-        _animation_name: &str,
-        _context_name: &str,
-        _inherited_contexts: &Vec<String>,
+        animation_name: &str,
+        context_name: &str,
+        inherited_contexts: &Vec<String>,
         properties: IndexMap<String, String>,
     ) -> IndexMap<String, String> {
-        let _sender = self.sender.clone();
+        tracing::info!(
+            "Resolving properties for animation '{}', context '{}': {:?}",
+            animation_name,
+            context_name,
+            properties
+        );
 
-        // TODO: Resolve the aliases and variables in the properties.
-
-        // TEMP
         properties
+            .into_iter()
+            .filter_map(|(identifier, value)| {
+                // Attempt to resolve the property alias using inherited contexts.
+                match resolve_alias_identifier(&identifier, inherited_contexts) {
+                    Some(property) => {
+                        // Resolve the variable value using inherited contexts.
+                        match resolve_variable_from_str(&value, false, inherited_contexts) {
+                            Some(resolved_value) => {
+                                tracing::debug!(
+                                    "Resolved property '{}' with value '{}' for animation '{}'",
+                                    property, resolved_value, animation_name
+                                );
+
+                                // Return the resolved property and value.
+                                return Some((property, resolved_value));
+                            }
+                            None => {
+                                let property = pascalify(&property);
+
+                                tracing::warn!(
+                                    "Unresolved variable in property '{}' for animation '{}' in context '{}'.",
+                                    property, animation_name, context_name
+                                );
+
+                                // Raise a warning if the variable could not be resolved.
+                                self.raise_warning(&format!(
+                                    "The `{}` property in the `{}` animation of the `{}` context contains unresolved variables. These variables were not found in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` property was not created. Please verify the variable definitions and their scope.",
+                                    property, animation_name, context_name, property
+                                ));
+                            }
+                        }
+                    }
+                    None => {
+                        let alias = identifier.trim_start_matches("nickname;");
+
+                        tracing::warn!(
+                            "Unresolved alias '{}' for animation '{}' in context '{}'.",
+                            alias, animation_name, context_name
+                        );
+
+                        // Raise a warning if the alias could not be resolved.
+                        self.raise_warning(&format!(
+                            "Warning: The `{}` alias in the `{}` animation of the `{}` context was not identified in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` alias was not created. Please verify the alias definition and its scope.",
+                            alias, animation_name, context_name, alias
+                        ));
+                    }
+                }
+
+                None
+            })
+            .collect()
     }
 
+    /// Raises a warning by creating and sending a notification.
+    ///
+    /// # Arguments
+    /// - `message` - The warning message to be raised.
+    fn raise_warning(&self, message: &str) {
+        let sender = self.sender.clone();
+        let notification = ShellscapeAlerts::create_warning(Local::now(), message);
+
+        // Attempt to send the warning notification.
+        if let Err(err) = sender.send(notification) {
+            tracing::error!("{:?}", err);
+        }
+    }
+
+    /// Applies the transformed animation keyframes to the STYLITRON AST.
+    ///
+    /// # Arguments
+    /// - `animation_name` - The name of the animation to apply.
+    /// - `context_name` - The context to which the animation belongs.
+    /// - `keyframes` - The transformed keyframes to apply.
     fn apply_animation_to_stylitron(
         &self,
         animation_name: &str,
