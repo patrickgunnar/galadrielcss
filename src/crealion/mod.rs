@@ -13,7 +13,9 @@ use crate::{
 };
 
 mod aliases;
+mod animations;
 mod breakpoints;
+mod classes;
 mod imports;
 mod themes;
 mod typefaces;
@@ -107,32 +109,133 @@ impl Crealion {
             Ok(()) => {}
         });
 
-        let _animations_data = self.get_value(
+        let inherited_contexts = vec![context_name.to_owned()];
+
+        let animations_data = self.get_value(
             context.animations.as_ref().map(|v| v.to_owned()),
             IndexMap::new(),
         );
 
-        // --------------------------
-        // Process the animations.
-        // --------------------------
+        self.process_animations(&context_name, &inherited_contexts, animations_data)
+            .await;
 
-        let _classes_data = self.get_value(
+        let classes_data = self.get_value(
             context.classes.as_ref().map(|v| v.to_owned()),
             IndexMap::new(),
         );
 
-        // ---------------------
-        // Process the classes.
-        // ---------------------
+        self.process_classes(context_name, inherited_contexts, classes_data)
+            .await;
 
         Ok(None)
     }
 
-    pub async fn init_layout_collector(&mut self, _context: &LayoutContext) -> CrealionResult {
+    pub async fn init_layout_collector(&mut self, context: &LayoutContext) -> CrealionResult {
+        let context_name = context.layout_name.to_owned();
+
+        let variables_data = self.get_value(
+            context.variables.as_ref().map(|v| v.values.to_owned()),
+            IndexMap::new(),
+        );
+
+        let (light_data, dark_data) = self.get_value(
+            context
+                .themes
+                .as_ref()
+                .map(|v| (v.light_schema.to_owned(), v.dark_schema.to_owned())),
+            (None, None),
+        );
+
+        let aliases_data = self.get_value(
+            context.aliases.as_ref().map(|v| v.values.to_owned()),
+            IndexMap::new(),
+        );
+
+        join_all(vec![
+            self.process_variables(context_name.to_owned(), variables_data),
+            self.process_themes(context_name.to_owned(), light_data, dark_data),
+            self.apply_aliases_to_stylitron(context_name.to_owned(), aliases_data),
+        ])
+        .await
+        .iter()
+        .for_each(|future_result| match future_result {
+            Err(join_error) => self.handle_join_error(join_error),
+            Ok(()) => {}
+        });
+
+        let inherited_contexts = vec![
+            context_name.to_owned(),
+            self.central_context_identifier.to_owned(),
+        ];
+
+        let animations_data = self.get_value(
+            context.animations.as_ref().map(|v| v.to_owned()),
+            IndexMap::new(),
+        );
+
+        self.process_animations(&context_name, &inherited_contexts, animations_data)
+            .await;
+
+        let classes_data = self.get_value(
+            context.classes.as_ref().map(|v| v.to_owned()),
+            IndexMap::new(),
+        );
+
+        self.process_classes(context_name, inherited_contexts, classes_data)
+            .await;
+
         Ok(None)
     }
 
-    pub async fn init_module_collector(&mut self, _context: &ModuleContext) -> CrealionResult {
+    pub async fn init_module_collector(&mut self, context: &ModuleContext) -> CrealionResult {
+        let context_name = context.module_name.to_owned();
+        let extended_from = context.extending_from.to_owned().unwrap_or("".to_string());
+
+        let variables_data = self.get_value(
+            context.variables.as_ref().map(|v| v.values.to_owned()),
+            IndexMap::new(),
+        );
+
+        let aliases_data = self.get_value(
+            context.aliases.as_ref().map(|v| v.values.to_owned()),
+            IndexMap::new(),
+        );
+
+        join_all(vec![
+            self.process_variables(context_name.to_owned(), variables_data),
+            self.apply_aliases_to_stylitron(context_name.to_owned(), aliases_data),
+        ])
+        .await
+        .iter()
+        .for_each(|future_result| match future_result {
+            Err(join_error) => self.handle_join_error(join_error),
+            Ok(()) => {}
+        });
+
+        let mut inherited_contexts = vec![
+            context_name.to_owned(),
+            extended_from.to_owned(),
+            self.central_context_identifier.to_owned(),
+        ];
+
+        inherited_contexts.retain(|v| !v.is_empty());
+
+        let animations_data = self.get_value(
+            context.animations.as_ref().map(|v| v.to_owned()),
+            IndexMap::new(),
+        );
+
+        self.process_animations(&context_name, &inherited_contexts, animations_data)
+            .await;
+
+        let classes_data = self.get_value(
+            context.classes.as_ref().map(|v| v.to_owned()),
+            IndexMap::new(),
+        );
+
+        self.process_classes(context_name, inherited_contexts, classes_data)
+            .await;
+
         Ok(None)
     }
 
