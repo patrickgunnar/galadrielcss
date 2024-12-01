@@ -177,17 +177,17 @@ impl GaladrielRuntime {
         // Register the pipeline's server port in temporary storage.
         pipeline.register_server_port_in_temp(running_on_port)?;
         // Start the Shellscape terminal interface rendering.
-        //interface.invoke()?;
+        interface.invoke()?;
 
         tracing::info!("Galadriel CSS development runtime initiated.");
 
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
-            /*if let Err(err) = interface.render(&mut shellscape_app) {
+            if let Err(err) = interface.render(&mut shellscape_app) {
                 // TODO: handle the error.
 
                 println!("{:?}", err);
-            }*/
+            }
 
             // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
             // TODO: Make the alerts from the initial parsing be reflected in real time with the UI.
@@ -381,7 +381,7 @@ impl GaladrielRuntime {
 
         // Clean up: Remove the temporary server port and abort the interface.
         pipeline.remove_server_port_in_temp()?;
-        //interface.abort()?;
+        interface.abort()?;
 
         Ok(())
     }
