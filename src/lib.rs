@@ -1,6 +1,5 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use asts::{CLASSINATOR, STYLITRON};
 use baraddur::BaraddurObserver;
 use chrono::{DateTime, Local};
 use configatron::{Configatron, ConfigurationJson};
@@ -444,8 +443,8 @@ impl GaladrielRuntime {
 
                         shellscape_app.add_alert(notification);
 
-                        println!("{:?}\n", *STYLITRON);
-                        println!("{:?}", *CLASSINATOR);
+                        //println!("{:?}\n", *STYLITRON);
+                        //println!("{:?}", *CLASSINATOR);
                     }
                     Err(GaladrielError::NenyrError { start_time, error }) => {
                         shellscape_app.add_alert(ShellscapeAlerts::create_nenyr_error(
