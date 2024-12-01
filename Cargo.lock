@@ -883,6 +883,7 @@ name = "nenyr"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "lazy_static",
  "regex",
 ]
 

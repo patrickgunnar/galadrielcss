@@ -237,6 +237,14 @@ impl Crealion {
         Ok(None)
     }
 
+    pub fn transform_context_name(&self, context_name: &str) -> String {
+        if context_name == self.central_context_identifier {
+            "central".to_string()
+        } else {
+            context_name.to_string()
+        }
+    }
+
     fn get_value<T>(&self, opt: Option<T>, default: T) -> T {
         opt.unwrap_or_else(|| {
             tracing::warn!("Expected value but found None, using default.");

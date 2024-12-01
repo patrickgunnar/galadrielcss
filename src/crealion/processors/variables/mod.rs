@@ -11,151 +11,106 @@ lazy_static! {
     static ref RE: Regex = Regex::new(r"\$\{(.*?)\}").unwrap();
 }
 
-/// Resolves a variable from a given string input by searching through context-based variables,
-/// animations, and themes. If no match is found, it returns `None`.
+#[allow(dead_code)]
+#[derive(Clone, PartialEq, Debug)]
+pub enum VariablesOption<T> {
+    Some(T),
+    Unresolved(T),
+}
+
+#[allow(dead_code)]
+impl<T> VariablesOption<T> {
+    pub fn is_some(&self) -> bool {
+        match self {
+            VariablesOption::Some(_) => true,
+            _ => false,
+        }
+    }
+}
+
+/// Resolves variables from a string input by attempting to resolve it from various sources
+/// such as variables and animation nodes. It also handles the possibility of unresolved variables.
+///
+/// This function uses regular expressions to extract variable names from the input string and
+/// attempts to resolve each one from the available contexts. If a variable cannot be resolved,
+/// it is returned as is. If the variable is found within the animation node context, the resolved
+/// name is returned. Otherwise, the function returns the resolved string with all variables
+/// replaced by their resolved values.
 ///
 /// # Parameters
-/// - `input`: The input string containing potential variables to resolve.
-/// - `use_animation`: A boolean flag indicating whether animation nodes should be checked.
-/// - `inherited_contexts`: A vector of inherited contexts to search for variable definitions.
+/// - `input`: A `String` representing the input that may contain variables to be resolved.
+/// - `use_animation`: A `bool` indicating whether to attempt resolving variables from animation nodes.
+/// - `inherited_contexts`: A reference to a `Vec<String>` containing the inherited contexts to search for variables.
 ///
 /// # Returns
-/// - `Some(String)` if the input string has resolvable variables.
-/// - `None` if no variables can be resolved.
+/// - `Option<String>`: The resolved string with variables replaced, or `None` if a variable could not be resolved.
 pub fn resolve_variable_from_str(
-    input: &str,
+    input: String,
     use_animation: bool,
     inherited_contexts: &Vec<String>,
-) -> Option<String> {
+) -> VariablesOption<String> {
     tracing::info!("Starting to resolve variable from input: {}", input);
 
-    // Copy the input string for resolution.
-    let mut resolved_input = input.to_string();
-    // Offset index to adjust for replacement shifts in the string.
-    let mut offset_index = 0;
+    // Variable to hold the unresolved variable name, if any.
+    let mut variable_not_found: Option<String> = None;
 
-    // Iterate over all regex captures in the input string.
-    for capture in RE.captures_iter(input) {
-        // Extract the variable name from the capture group.
-        let relative_name = &capture[1].to_string();
+    // Process the input string using the regex RE to replace captured variable names.
+    let resolved_input = RE
+        .replace_all(&input, |caps: &regex::Captures| {
+            // Extract the variable name from the regex capture group.
+            let relative_name = &caps[1].to_string();
 
-        tracing::info!("Processing capture: {}", relative_name);
+            tracing::info!("Processing capture: {}", relative_name);
 
-        // Attempt to resolve the variable from context-based variables.
-        if let Some(resolved_name) = resolve_from_variables_node(relative_name, inherited_contexts)
-        {
-            tracing::info!("Resolved '{}' from variables node", resolved_name);
+            // First, attempt to resolve the variable from the themes node.
+            match resolve_from_themes_node(relative_name, inherited_contexts) {
+                Some(resolved_name) => {
+                    tracing::info!("Resolved '{}' from variables node", resolved_name);
 
-            apply_resolve_variable_to_input(
-                &mut resolved_input,
-                &mut offset_index,
-                &format!("var({resolved_name})"),
-                &capture,
-            );
-
-            continue;
-        }
-
-        // If animations are allowed, attempt to resolve from animation nodes.
-        if use_animation {
-            if let Some(resolved_name) =
-                resolve_from_animations_node(relative_name, inherited_contexts)
-            {
-                tracing::info!("Resolved '{}' from animations node", resolved_name);
-
-                apply_resolve_variable_to_input(
-                    &mut resolved_input,
-                    &mut offset_index,
-                    &resolved_name,
-                    &capture,
-                );
-
-                continue;
+                    return format!("var({resolved_name})");
+                }
+                None => {}
             }
+
+            // Second attempt to resolve the variable from the variables node.
+            match resolve_from_variables_node(relative_name, inherited_contexts) {
+                Some(resolved_name) => {
+                    tracing::info!("Resolved '{}' from variables node", resolved_name);
+
+                    return format!("var({resolved_name})");
+                }
+                None => {}
+            }
+
+            // If using animation, attempt to resolve the variable from animation nodes.
+            if use_animation {
+                match resolve_from_animations_node(relative_name, inherited_contexts) {
+                    Some(resolved_name) => {
+                        tracing::info!("Resolved '{}' from animations node", resolved_name);
+
+                        return resolved_name;
+                    }
+                    None => {}
+                }
+            }
+
+            // If variable was not resolved, store its name and return the original.
+            variable_not_found = Some(relative_name.to_owned());
+
+            return relative_name.to_owned();
+        })
+        .to_string();
+
+    // If a variable could not be resolved, log a warning and return `None`.
+    match variable_not_found {
+        Some(name) => {
+            tracing::warn!("Could not resolve variable '{}' from any source", name);
+
+            return VariablesOption::Unresolved(name);
         }
-
-        // Attempt to resolve the variable from themes.
-        if let Some(resolved_name) = resolve_from_themes_node(relative_name, inherited_contexts) {
-            tracing::info!("Resolved '{}' from themes node", resolved_name);
-
-            apply_resolve_variable_to_input(
-                &mut resolved_input,
-                &mut offset_index,
-                &format!("var({resolved_name})"),
-                &capture,
-            );
-
-            continue;
-        }
-
-        tracing::warn!(
-            "Could not resolve variable '{}' from any source",
-            relative_name
-        );
-
-        return None;
+        // If no variables were unresolved, return the fully resolved input.
+        None => VariablesOption::Some(resolved_input),
     }
-
-    tracing::info!(
-        "Successfully resolved all variables, final input: {}",
-        resolved_input
-    );
-
-    Some(resolved_input)
-}
-
-/// Replaces a captured variable in the input string with a resolved value,
-/// adjusting for positional offsets during replacements.
-///
-/// # Parameters
-/// - `resolved_input`: The string being modified.
-/// - `offset_index`: The current positional offset in the string.
-/// - `replacement_value`: The resolved value to replace the variable.
-/// - `capture`: The regex capture containing the variable match.
-fn apply_resolve_variable_to_input(
-    resolved_input: &mut String,
-    offset_index: &mut usize,
-    replacement_value: &str,
-    capture: &regex::Captures<'_>,
-) {
-    // Compute the positions of the variable within the string.
-    let (start_pos, end_pos) = get_positions(capture);
-
-    tracing::info!(
-        "Replacing variable in input at positions {}..{}",
-        start_pos,
-        end_pos
-    );
-
-    // Replace the variable with its resolved value.
-    resolved_input.replace_range(
-        start_pos.saturating_add(*offset_index)..end_pos.saturating_add(*offset_index),
-        replacement_value,
-    );
-
-    // Adjust the offset index based on the replacement length.
-    let adjustment = if end_pos <= start_pos {
-        end_pos.saturating_sub(start_pos)
-    } else {
-        0
-    };
-
-    *offset_index += replacement_value.len().saturating_sub(adjustment);
-}
-
-/// Retrieves the start and end positions of a regex capture group.
-///
-/// # Parameters
-/// - `capture`: The regex capture to extract positions from.
-///
-/// # Returns
-/// - `(usize, usize)` tuple representing the start and end positions.
-fn get_positions(capture: &regex::Captures<'_>) -> (usize, usize) {
-    // Retrieve the positions for the first capture group (index 0).
-    capture
-        .get(0)
-        .and_then(|cap| Some((cap.start(), cap.end())))
-        .unwrap_or((0, 0))
 }
 
 /// Resolves a variable from the "variables" node in the STYLITRON.
@@ -259,4 +214,231 @@ fn resolve_from_themes_node(
             }
             _ => None,
         })
+}
+
+#[cfg(test)]
+mod processors_tests {
+    use indexmap::IndexMap;
+
+    use crate::{
+        asts::STYLITRON, crealion::processors::variables::VariablesOption, types::Stylitron,
+    };
+
+    use super::resolve_variable_from_str;
+
+    fn mock_variables() {
+        let map = IndexMap::from([
+            (
+                "justAnotherContext".to_string(),
+                IndexMap::from([
+                    (
+                        "varNameOne".to_string(),
+                        vec!["--jd5dj3h4e7".to_string(), "#000000".to_string()],
+                    ),
+                    (
+                        "varNameTwo".to_string(),
+                        vec!["--o34s54e83e".to_string(), "#FFFFFF".to_string()],
+                    ),
+                ]),
+            ),
+            (
+                "oneExtraContext".to_string(),
+                IndexMap::from([
+                    (
+                        "varNameOne".to_string(),
+                        vec!["--jd5dj3h4e7".to_string(), "#000000".to_string()],
+                    ),
+                    (
+                        "varNameTwo".to_string(),
+                        vec!["--o34s54e83e".to_string(), "#FFFFFF".to_string()],
+                    ),
+                    (
+                        "varNameThree".to_string(),
+                        vec!["--y7637dj35e".to_string(), "rgb(0, 255, 0)".to_string()],
+                    ),
+                ]),
+            ),
+        ]);
+
+        STYLITRON.insert("variables".to_string(), Stylitron::Variables(map));
+    }
+
+    fn mock_themes() {
+        let map = IndexMap::from([
+            (
+                "justAnotherContext".to_string(),
+                IndexMap::from([
+                    (
+                        "light".to_string(),
+                        IndexMap::from([(
+                            "themesVarOne".to_string(),
+                            vec!["--jd5dj3h4e7".to_string(), "rgb(255, 0, 255)".to_string()],
+                        )]),
+                    ),
+                    (
+                        "dark".to_string(),
+                        IndexMap::from([(
+                            "themesVarOne".to_string(),
+                            vec!["--jd5dj3h4e7".to_string(), "rgb(0, 255, 0)".to_string()],
+                        )]),
+                    ),
+                ]),
+            ),
+            (
+                "oneExtraContext".to_string(),
+                IndexMap::from([
+                    (
+                        "light".to_string(),
+                        IndexMap::from([
+                            (
+                                "themesVarOne".to_string(),
+                                vec!["--jd5dj3h4e7".to_string(), "#FFFFFF".to_string()],
+                            ),
+                            (
+                                "themesVarTwo".to_string(),
+                                vec!["--ywd5drj73h".to_string(), "#000000".to_string()],
+                            ),
+                        ]),
+                    ),
+                    (
+                        "dark".to_string(),
+                        IndexMap::from([
+                            (
+                                "themesVarOne".to_string(),
+                                vec!["--jd5dj3h4e7".to_string(), "#000000".to_string()],
+                            ),
+                            (
+                                "themesVarTwo".to_string(),
+                                vec!["--ywd5drj73h".to_string(), "#FFFFFF".to_string()],
+                            ),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]);
+
+        STYLITRON.insert("themes".to_string(), Stylitron::Themes(map));
+    }
+
+    fn mock_animations() {
+        let map = IndexMap::from([
+            (
+                "animationsContextOne".to_string(),
+                IndexMap::from([(
+                    "myAnimation".to_string(),
+                    IndexMap::from([(
+                        "g39jd4dkh3k7".to_string(),
+                        IndexMap::from([
+                            (
+                                "0%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "blue".to_string(),
+                                )]),
+                            ),
+                            (
+                                "50%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "green".to_string(),
+                                )]),
+                            ),
+                            (
+                                "100%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "red".to_string(),
+                                )]),
+                            ),
+                        ]),
+                    )]),
+                )]),
+            ),
+            (
+                "animationsContextTwo".to_string(),
+                IndexMap::from([(
+                    "simpleAnimation".to_string(),
+                    IndexMap::from([(
+                        "g4duf74dju3".to_string(),
+                        IndexMap::from([
+                            (
+                                "0%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "blue".to_string(),
+                                )]),
+                            ),
+                            (
+                                "50%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "green".to_string(),
+                                )]),
+                            ),
+                            (
+                                "100%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "red".to_string(),
+                                )]),
+                            ),
+                        ]),
+                    )]),
+                )]),
+            ),
+        ]);
+
+        STYLITRON.insert("animations".to_string(), Stylitron::Animation(map));
+    }
+
+    #[test]
+    fn variables_exists_in_variable_node() {
+        mock_variables();
+
+        let input = "${varNameThree} ${varNameOne} ${varNameTwo}".to_string();
+        let inherits = vec![
+            "justAnotherContext".to_string(),
+            "oneExtraContext".to_string(),
+        ];
+
+        let resolved_input = resolve_variable_from_str(input, false, &inherits);
+        let expected_result = "var(--y7637dj35e) var(--jd5dj3h4e7) var(--o34s54e83e)".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, VariablesOption::Some(expected_result));
+    }
+
+    #[test]
+    fn variables_exists_in_themes_node() {
+        mock_themes();
+
+        let input = "${themesVarOne} ${themesVarTwo}".to_string();
+        let inherits = vec![
+            "justAnotherContext".to_string(),
+            "oneExtraContext".to_string(),
+        ];
+
+        let resolved_input = resolve_variable_from_str(input, false, &inherits);
+        let expected_result = "var(--jd5dj3h4e7) var(--ywd5drj73h)".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, VariablesOption::Some(expected_result));
+    }
+
+    #[test]
+    fn animations_exists_in_animation_node() {
+        mock_animations();
+
+        let input = "${simpleAnimation} ${myAnimation}".to_string();
+        let inherits = vec![
+            "animationsContextOne".to_string(),
+            "animationsContextTwo".to_string(),
+        ];
+
+        let resolved_input = resolve_variable_from_str(input, true, &inherits);
+        let expected_result = "g4duf74dju3 g39jd4dkh3k7".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, VariablesOption::Some(expected_result));
+    }
 }

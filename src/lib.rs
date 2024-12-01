@@ -9,6 +9,7 @@ use formera::Formera;
 use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
+use nenyr::NenyrParser;
 use shellscape::{
     alerts::ShellscapeAlerts, app::ShellscapeApp, commands::ShellscapeCommands, Shellscape,
 };
@@ -148,6 +149,7 @@ impl GaladrielRuntime {
     }
 
     async fn development_runtime(&mut self) -> GaladrielResult<()> {
+        let mut nenyr_parser = NenyrParser::new();
         let (alerts_sender, mut alerts_receiver) = mpsc::unbounded_channel::<ShellscapeAlerts>();
 
         // Initialize the Shellscape terminal UI.
@@ -241,7 +243,8 @@ impl GaladrielRuntime {
                                 event,
                                 &mut shellscape_app,
                                 Arc::clone(&atomically_matcher),
-                                alerts_sender.clone()
+                                alerts_sender.clone(),
+                                &mut nenyr_parser,
                             ).await;
                         }
                         // Handle errors from the Barad-dûr observer and notify the application.
@@ -408,6 +411,7 @@ impl GaladrielRuntime {
         shellscape_app: &mut ShellscapeApp,
         atomically_matcher: Arc<RwLock<overrides::Override>>,
         sender: UnboundedSender<ShellscapeAlerts>,
+        nenyr_parser: &mut NenyrParser,
     ) {
         match event {
             // If a notification event is received, add it directly to the Shellscape app.
@@ -426,7 +430,7 @@ impl GaladrielRuntime {
 
                 let mut formera = Formera::new(path, self.configatron.get_auto_naming(), sender);
 
-                match formera.start().await {
+                match formera.start(nenyr_parser).await {
                     Ok(()) => {
                         let ending_time = Local::now();
                         let duration = ending_time - start_time;

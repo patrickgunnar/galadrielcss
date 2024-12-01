@@ -4,6 +4,7 @@ use nenyr::types::animations::{NenyrAnimation, NenyrAnimationKind, NenyrKeyframe
 
 use crate::{
     asts::STYLITRON,
+    crealion::{processors::variables::VariablesOption, utils::camelify::camelify},
     error::{ErrorAction, ErrorKind, GaladrielError},
     shellscape::alerts::ShellscapeAlerts,
     types::Stylitron,
@@ -11,10 +12,7 @@ use crate::{
 
 use super::{
     processors::{aliases::resolve_alias_identifier, variables::resolve_variable_from_str},
-    utils::{
-        generates_variable_or_animation_name::generates_variable_or_animation_name,
-        pascalify::pascalify,
-    },
+    utils::generates_variable_or_animation_name::generates_variable_or_animation_name,
     Crealion,
 };
 
@@ -119,7 +117,7 @@ impl Crealion {
                         Local::now(),
                         &format!(
                             "The animation `{}` within the context `{}` has been detected as empty.",
-                            animation_name, if context_name == self.central_context_identifier { "central" } else { context_name }
+                            animation_name, self.transform_context_name(context_name)
                         ),
                     );
 
@@ -413,8 +411,8 @@ impl Crealion {
                 match resolve_alias_identifier(&identifier, inherited_contexts) {
                     Some(property) => {
                         // Resolve the variable value using inherited contexts.
-                        match resolve_variable_from_str(&value, false, inherited_contexts) {
-                            Some(resolved_value) => {
+                        match resolve_variable_from_str(value, false, inherited_contexts) {
+                            VariablesOption::Some(resolved_value) => {
                                 tracing::debug!(
                                     "Resolved property '{}' with value '{}' for animation '{}'",
                                     property, resolved_value, animation_name
@@ -423,8 +421,9 @@ impl Crealion {
                                 // Return the resolved property and value.
                                 return Some((property, resolved_value));
                             }
-                            None => {
-                                let property = pascalify(&property);
+                            VariablesOption::Unresolved(unresolved_variable) => {
+                                let property = camelify(&property);
+                                let context_name = self.transform_context_name(context_name);
 
                                 tracing::warn!(
                                     "Unresolved variable in property '{}' for animation '{}' in context '{}'.",
@@ -433,14 +432,15 @@ impl Crealion {
 
                                 // Raise a warning if the variable could not be resolved.
                                 self.raise_warning(&format!(
-                                    "The `{}` property in the `{}` animation of the `{}` context contains unresolved variables. These variables were not found in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` property was not created. Please verify the variable definitions and their scope.",
-                                    property, animation_name, context_name, property
+                                    "The `{}` property in the `{}` animation of the `{}` context contains unresolved variable: `{}`. The variable were not found in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` property was not created. Please verify the variable definitions and their scope.",
+                                    property, animation_name, context_name, unresolved_variable, property
                                 ));
                             }
                         }
                     }
                     None => {
                         let alias = identifier.trim_start_matches("nickname;");
+                        let context_name = self.transform_context_name(context_name);
 
                         tracing::warn!(
                             "Unresolved alias '{}' for animation '{}' in context '{}'.",
@@ -470,7 +470,7 @@ impl Crealion {
 
         // Attempt to send the warning notification.
         if let Err(err) = sender.send(notification) {
-            tracing::error!("{:?}", err);
+            tracing::error!("Failed to send warning notification: {:?}", err);
         }
     }
 
