@@ -449,7 +449,7 @@ impl Crealion {
 
                         // Raise a warning if the alias could not be resolved.
                         self.raise_warning(&format!(
-                            "Warning: The `{}` alias in the `{}` animation of the `{}` context was not identified in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` alias was not created. Please verify the alias definition and its scope.",
+                            "The `{}` alias in the `{}` animation of the `{}` context was not identified in the current context or any of its extension contexts. As a result, the style corresponding to the `{}` alias was not created. Please verify the alias definition and its scope.",
                             alias, animation_name, context_name, alias
                         ));
                     }

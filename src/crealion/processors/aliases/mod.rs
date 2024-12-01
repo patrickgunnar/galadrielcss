@@ -26,20 +26,22 @@ pub fn resolve_alias_identifier(
             "Found 'nickname;' prefix, attempting alias resolution"
         );
 
-        return inherited_contexts.iter().find_map(|context_name| {
-            STYLITRON
-                .get("aliases")
-                .and_then(|stylitron_data| match &*stylitron_data {
-                    Stylitron::Aliases(ref aliases_definitions) => aliases_definitions
-                        .get(context_name)
-                        .and_then(|context_aliases| {
-                            context_aliases
-                                .get(alias)
-                                .and_then(|alias_entry| Some(alias_entry.to_owned()))
-                        }),
-                    _ => None,
-                })
-        });
+        return STYLITRON
+            .get("aliases")
+            .and_then(|stylitron_data| match &*stylitron_data {
+                Stylitron::Aliases(ref aliases_definitions) => {
+                    inherited_contexts.iter().find_map(|context_name| {
+                        aliases_definitions
+                            .get(context_name)
+                            .and_then(|context_aliases| {
+                                context_aliases
+                                    .get(alias)
+                                    .and_then(|alias_entry| Some(alias_entry.to_owned()))
+                            })
+                    })
+                }
+                _ => None,
+            });
     }
 
     tracing::trace!(

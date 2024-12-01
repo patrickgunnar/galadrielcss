@@ -16,6 +16,7 @@ mod aliases;
 mod animations;
 mod breakpoints;
 mod classes;
+mod classinator;
 mod imports;
 mod processors;
 mod themes;
@@ -24,6 +25,13 @@ mod utils;
 mod variables;
 
 type CrealionResult = GaladrielResult<Option<Vec<String>>>;
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum CrealionContextType {
+    Central,
+    Layout,
+    Module,
+}
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -124,8 +132,14 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_classes(context_name, inherited_contexts, classes_data)
-            .await;
+        self.process_classes(
+            context_name,
+            inherited_contexts,
+            None,
+            classes_data,
+            CrealionContextType::Central,
+        )
+        .await;
 
         Ok(None)
     }
@@ -180,8 +194,14 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_classes(context_name, inherited_contexts, classes_data)
-            .await;
+        self.process_classes(
+            context_name,
+            inherited_contexts,
+            None,
+            classes_data,
+            CrealionContextType::Layout,
+        )
+        .await;
 
         Ok(None)
     }
@@ -231,8 +251,14 @@ impl Crealion {
             IndexMap::new(),
         );
 
-        self.process_classes(context_name, inherited_contexts, classes_data)
-            .await;
+        self.process_classes(
+            context_name,
+            inherited_contexts,
+            context.extending_from.to_owned(),
+            classes_data,
+            CrealionContextType::Module,
+        )
+        .await;
 
         Ok(None)
     }

@@ -32,12 +32,7 @@ pub fn resolve_breakpoint_identifier(identifier: &str) -> Option<String> {
                                 .and_then(|breakpoint_entry| {
                                     tracing::info!(identifier, resolved_breakpoint = %breakpoint_entry, "Breakpoint resolved");
 
-                                    match schema_type.to_owned() {
-                                        "mobile-first" => Some(format!("min-width:{}", breakpoint_entry.to_owned())),
-                                        "desktop-first" => Some(format!("max-width:{}", breakpoint_entry.to_owned())),
-                                        _ => None
-
-                                    }
+                                    Some(breakpoint_entry.to_owned())
                             })
                         })
                 })
@@ -60,15 +55,15 @@ mod breakpoints_test {
             (
                 "mobile-first".to_string(),
                 IndexMap::from([
-                    ("mobSm".to_string(), "320px".to_string()),
-                    ("mobMd".to_string(), "740px".to_string()),
+                    ("mobSm".to_string(), "min-width:320px".to_string()),
+                    ("mobMd".to_string(), "min-width:740px".to_string()),
                 ]),
             ),
             (
                 "desktop-first".to_string(),
                 IndexMap::from([
-                    ("deskSm".to_string(), "320px".to_string()),
-                    ("deskMd".to_string(), "740px".to_string()),
+                    ("deskSm".to_string(), "max-width:320px".to_string()),
+                    ("deskMd".to_string(), "max-width:740px".to_string()),
                 ]),
             ),
         ]);
