@@ -566,3 +566,250 @@ impl Crealion {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{
+        animations::{NenyrAnimation, NenyrAnimationKind, NenyrKeyframe},
+        ast::NenyrAst,
+        central::CentralContext,
+    };
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON,
+        crealion::{
+            utils::generates_variable_or_animation_name::generates_variable_or_animation_name,
+            Crealion,
+        },
+        shellscape::alerts::ShellscapeAlerts,
+        types::Stylitron,
+    };
+
+    fn mock_animations() -> IndexMap<String, NenyrAnimation> {
+        IndexMap::from([(
+            "testingAnimation".to_string(),
+            NenyrAnimation {
+                animation_name: "testingAnimation".to_string(),
+                kind: Some(NenyrAnimationKind::Progressive),
+                progressive_count: Some(2),
+                keyframe: vec![
+                    NenyrKeyframe::Progressive(IndexMap::from([(
+                        "background-color".to_string(),
+                        "#FF0000".to_string(),
+                    )])),
+                    NenyrKeyframe::Progressive(IndexMap::from([(
+                        "background-color".to_string(),
+                        "#00FFFF".to_string(),
+                    )])),
+                ],
+            },
+        )])
+    }
+
+    fn transform_animations(
+        context_name: &str,
+    ) -> IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, String>>>> {
+        let unique_name =
+            generates_variable_or_animation_name(context_name, "testingAnimation", false);
+
+        IndexMap::from([(
+            "testingAnimation".to_string(),
+            IndexMap::from([(
+                unique_name,
+                IndexMap::from([
+                    (
+                        "0%".to_string(),
+                        IndexMap::from([("background-color".to_string(), "#FF0000".to_string())]),
+                    ),
+                    (
+                        "100%".to_string(),
+                        IndexMap::from([("background-color".to_string(), "#00FFFF".to_string())]),
+                    ),
+                ]),
+            )]),
+        )])
+    }
+
+    #[test]
+    fn test_apply_animations_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let inherits = vec!["myAnimationContextOne".to_string()];
+        let _ = crealion.process_animations("myAnimationContextOne", &inherits, mock_animations());
+
+        let result =
+            STYLITRON
+                .get("animations")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Animation(animations_definitions) => animations_definitions
+                        .get("myAnimationContextOne")
+                        .and_then(|context_animations| Some(context_animations.to_owned())),
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+
+        let animations = result.unwrap();
+        let expected_animations = transform_animations("myAnimationContextOne");
+
+        assert_eq!(animations, expected_animations);
+    }
+
+    #[test]
+    fn test_apply_animations_to_existing_context() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Pre-populate the STYLITRON AST with existing data.
+        let initial_data = IndexMap::from([(
+            "newContext".to_string(),
+            IndexMap::from([(
+                "initialAnimation".to_string(),
+                IndexMap::from([(
+                    "gs83jd25d28k".to_string(),
+                    IndexMap::from([(
+                        "0%".to_string(),
+                        IndexMap::from([("background-color".to_string(), "#FF0000".to_string())]),
+                    )]),
+                )]),
+            )]),
+        )]);
+
+        STYLITRON.insert("animations".to_string(), Stylitron::Animation(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let inherits = vec!["myAnimationContextTwo".to_string()];
+        let _ = crealion.process_animations("myAnimationContextTwo", &inherits, mock_animations());
+
+        let result =
+            STYLITRON
+                .get("animations")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Animation(animations_definitions) => {
+                        animations_definitions.get("myAnimationContextTwo").cloned()
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+        let animations = result.unwrap();
+        let expected_animations = transform_animations("myAnimationContextTwo");
+
+        // Verify that the context was updated correctly.
+        assert_eq!(animations, expected_animations);
+    }
+
+    #[test]
+    fn test_apply_animations_to_new_context() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        // Ensure no existing context in the STYLITRON AST.
+        let initial_data = IndexMap::new();
+        STYLITRON.insert("animations".to_string(), Stylitron::Animation(initial_data));
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let inherits = vec!["myAnimationContextThree".to_string()];
+        let _ =
+            crealion.process_animations("myAnimationContextThree", &inherits, mock_animations());
+
+        let result =
+            STYLITRON
+                .get("animations")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Animation(animations_definitions) => animations_definitions
+                        .get("myAnimationContextThree")
+                        .cloned(),
+                    _ => None,
+                });
+
+        assert!(result.is_some());
+        let animations = result.unwrap();
+        let expected_animations = transform_animations("myAnimationContextThree");
+
+        // Verify that the new context was added with correct animations.
+        assert_eq!(animations, expected_animations);
+    }
+
+    #[test]
+    fn test_apply_animations_with_empty_animations_data() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let empty_animations: IndexMap<String, NenyrAnimation> = IndexMap::new();
+        let inherits = vec!["emptyAnimationContext".to_string()];
+        let _ = crealion.process_animations(
+            "emptyAnimationContext",
+            &inherits,
+            empty_animations.clone(),
+        );
+
+        let result =
+            STYLITRON
+                .get("animations")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Animation(animations_definitions) => {
+                        animations_definitions.get("emptyAnimationContext").cloned()
+                    }
+                    _ => None,
+                });
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_apply_animations_no_animations_section() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+
+        // Simulate an empty STYLITRON AST to trigger an error.
+        STYLITRON.remove("animations");
+
+        let crealion = Crealion::new(
+            sender.clone(),
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let inherits = vec!["noAnimationsSection".to_string()];
+        let _ = crealion.process_animations("noAnimationsSection", &inherits, mock_animations());
+
+        // Verify that an error notification was sent.
+        if let Some(notification) = receiver.recv().await {
+            if let ShellscapeAlerts::GaladrielError {
+                start_time: _,
+                error,
+            } = notification
+            {
+                assert_eq!(
+                    error.get_message(),
+                    "Failed to access the animations section in STYLITRON AST".to_string()
+                );
+            }
+        } else {
+            panic!("Expected an error notification, but none was received.");
+        }
+    }
+}

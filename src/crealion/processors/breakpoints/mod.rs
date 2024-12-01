@@ -32,11 +32,99 @@ pub fn resolve_breakpoint_identifier(identifier: &str) -> Option<String> {
                                 .and_then(|breakpoint_entry| {
                                     tracing::info!(identifier, resolved_breakpoint = %breakpoint_entry, "Breakpoint resolved");
 
-                                    Some(breakpoint_entry.to_owned())
+                                    match schema_type.to_owned() {
+                                        "mobile-first" => Some(format!("min-width:{}", breakpoint_entry.to_owned())),
+                                        "desktop-first" => Some(format!("max-width:{}", breakpoint_entry.to_owned())),
+                                        _ => None
+
+                                    }
                             })
                         })
                 })
             }
             _ => None,
         })
+}
+
+#[cfg(test)]
+mod breakpoints_test {
+    use indexmap::IndexMap;
+
+    use crate::{
+        asts::STYLITRON, crealion::processors::breakpoints::resolve_breakpoint_identifier,
+        types::Stylitron,
+    };
+
+    fn mock_breakpoints() {
+        let map = IndexMap::from([
+            (
+                "mobile-first".to_string(),
+                IndexMap::from([
+                    ("mobSm".to_string(), "320px".to_string()),
+                    ("mobMd".to_string(), "740px".to_string()),
+                ]),
+            ),
+            (
+                "desktop-first".to_string(),
+                IndexMap::from([
+                    ("deskSm".to_string(), "320px".to_string()),
+                    ("deskMd".to_string(), "740px".to_string()),
+                ]),
+            ),
+        ]);
+
+        STYLITRON.insert("breakpoints".to_string(), Stylitron::Breakpoints(map));
+    }
+
+    #[test]
+    fn sm_breakpoint_exists_in_mobile_first_node() {
+        mock_breakpoints();
+
+        let input = "mobSm";
+
+        let resolved_input = resolve_breakpoint_identifier(input);
+        let expected_result = "min-width:320px".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, Some(expected_result));
+    }
+
+    #[test]
+    fn md_breakpoint_exists_in_mobile_first_node() {
+        mock_breakpoints();
+
+        let input = "mobMd";
+
+        let resolved_input = resolve_breakpoint_identifier(input);
+        let expected_result = "min-width:740px".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, Some(expected_result));
+    }
+
+    #[test]
+    fn sm_breakpoint_exists_in_desktop_first_node() {
+        mock_breakpoints();
+
+        let input = "deskSm";
+
+        let resolved_input = resolve_breakpoint_identifier(input);
+        let expected_result = "max-width:320px".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, Some(expected_result));
+    }
+
+    #[test]
+    fn md_breakpoint_exists_in_desktop_first_node() {
+        mock_breakpoints();
+
+        let input = "deskMd";
+
+        let resolved_input = resolve_breakpoint_identifier(input);
+        let expected_result = "max-width:740px".to_string();
+
+        assert!(resolved_input.is_some());
+        assert_eq!(resolved_input, Some(expected_result));
+    }
 }

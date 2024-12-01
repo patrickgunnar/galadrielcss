@@ -344,7 +344,7 @@ mod tests {
         );
 
         let _ = crealion
-            .process_variables("noAliasSection".to_string(), mock_variables())
+            .process_variables("noVariablesSection".to_string(), mock_variables())
             .await;
 
         // Verify that an error notification was sent.

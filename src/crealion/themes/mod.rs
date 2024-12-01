@@ -436,7 +436,7 @@ mod tests {
 
         let _ = crealion
             .process_themes(
-                "noAliasSection".to_string(),
+                "noThemesSection".to_string(),
                 nenyr_themes.light_schema,
                 nenyr_themes.dark_schema,
             )
