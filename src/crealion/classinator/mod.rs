@@ -209,3 +209,162 @@ impl Crealion {
         self.apply_tracking_map_to_node(derived_from, class_name, tracking_cls_names, modules_map);
     }
 }
+
+#[cfg(test)]
+mod classinator_tests {
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::CLASSINATOR,
+        crealion::{Crealion, CrealionContextType},
+        types::Classinator,
+    };
+
+    #[test]
+    fn central_map_should_exists_in_ast() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        crealion.apply_tracking_map_to_classinator(
+            "myTestClassinatorClass".to_string(),
+            "central".to_string(),
+            "_".to_string(),
+            None,
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ],
+            CrealionContextType::Central,
+        );
+
+        let cls_map =
+            CLASSINATOR
+                .get("central")
+                .and_then(|classinator_data| match &*classinator_data {
+                    Classinator::Central(ref central_map) => central_map.get("_").and_then(|map| {
+                        map.get("myTestClassinatorClass")
+                            .and_then(|cls_map| Some(cls_map.to_owned()))
+                    }),
+                    _ => None,
+                });
+
+        assert!(cls_map.is_some());
+        assert_eq!(
+            cls_map.unwrap(),
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn layout_map_should_exists_in_ast() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        crealion.apply_tracking_map_to_classinator(
+            "myTestClassinatorClass".to_string(),
+            "classinatorLayoutContextName".to_string(),
+            "_".to_string(),
+            None,
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ],
+            CrealionContextType::Layout,
+        );
+
+        let cls_map =
+            CLASSINATOR
+                .get("layouts")
+                .and_then(|classinator_data| match &*classinator_data {
+                    Classinator::Layouts(ref layouts_map) => layouts_map
+                        .get("classinatorLayoutContextName")
+                        .and_then(|context_map| {
+                            context_map.get("_").and_then(|map| {
+                                map.get("myTestClassinatorClass")
+                                    .and_then(|cls_map| Some(cls_map.to_owned()))
+                            })
+                        }),
+                    _ => None,
+                });
+
+        assert!(cls_map.is_some());
+        assert_eq!(
+            cls_map.unwrap(),
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn module_map_should_exists_in_ast() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        crealion.apply_tracking_map_to_classinator(
+            "myTestClassinatorClass".to_string(),
+            "classinatorModuleContextName".to_string(),
+            "_".to_string(),
+            None,
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ],
+            CrealionContextType::Module,
+        );
+
+        let cls_map =
+            CLASSINATOR
+                .get("modules")
+                .and_then(|classinator_data| match &*classinator_data {
+                    Classinator::Modules(ref modules_map) => {
+                        modules_map.get("_").and_then(|no_parent_map| {
+                            no_parent_map.get("classinatorModuleContextName").and_then(
+                                |context_map| {
+                                    context_map.get("_").and_then(|map| {
+                                        map.get("myTestClassinatorClass")
+                                            .and_then(|cls_map| Some(cls_map.to_owned()))
+                                    })
+                                },
+                            )
+                        })
+                    }
+                    _ => None,
+                });
+
+        assert!(cls_map.is_some());
+        assert_eq!(
+            cls_map.unwrap(),
+            vec![
+                "utility-cls-one".to_string(),
+                "utility-cls-two".to_string(),
+                "utility-cls-three".to_string(),
+            ]
+        );
+    }
+}

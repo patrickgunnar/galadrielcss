@@ -704,3 +704,278 @@ impl Crealion {
         }
     }
 }
+
+#[cfg(test)]
+mod classes_tests {
+    use indexmap::IndexMap;
+    use nenyr::types::{ast::NenyrAst, central::CentralContext, class::NenyrStyleClass};
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::{CLASSINATOR, STYLITRON},
+        crealion::{Crealion, CrealionContextType},
+        types::{Classinator, Stylitron},
+    };
+
+    fn mock_breakpoints() {
+        let map = IndexMap::from([(
+            "mobile-first".to_string(),
+            IndexMap::from([("mobMd".to_string(), "min-width:740px".to_string())]),
+        )]);
+
+        STYLITRON.insert("breakpoints".to_string(), Stylitron::Breakpoints(map));
+    }
+
+    fn mock_classes() -> IndexMap<String, NenyrStyleClass> {
+        IndexMap::from([
+            (
+                "thisJustAnotherClass".to_string(),
+                NenyrStyleClass {
+                    class_name: "thisJustAnotherClass".to_string(),
+                    deriving_from: Some("oneExtraClass".to_string()),
+                    is_important: Some(true),
+                    style_patterns: Some(IndexMap::from([(
+                        "_stylesheet".to_string(),
+                        IndexMap::from([("background-color".to_string(), "#0000FF".to_string())]),
+                    )])),
+                    responsive_patterns: Some(IndexMap::from([(
+                        "mobMd".to_string(),
+                        IndexMap::from([(
+                            "_stylesheet".to_string(),
+                            IndexMap::from([(
+                                "background-color".to_string(),
+                                "#FF0000".to_string(),
+                            )]),
+                        )]),
+                    )])),
+                },
+            ),
+            (
+                "oneExtraClass".to_string(),
+                NenyrStyleClass {
+                    class_name: "oneExtraClass".to_string(),
+                    deriving_from: None,
+                    is_important: None,
+                    style_patterns: Some(IndexMap::from([(
+                        ":hover".to_string(),
+                        IndexMap::from([("background-color".to_string(), "#FFFF00".to_string())]),
+                    )])),
+                    responsive_patterns: Some(IndexMap::from([(
+                        "mobMd".to_string(),
+                        IndexMap::from([(
+                            ":hover".to_string(),
+                            IndexMap::from([(
+                                "background-color".to_string(),
+                                "#00FFFF".to_string(),
+                            )]),
+                        )]),
+                    )])),
+                },
+            ),
+        ])
+    }
+
+    #[tokio::test]
+    async fn classes_exists_in_ast() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+        mock_breakpoints();
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_classes(
+                "firstClassContextName".to_string(),
+                vec!["firstClassContextName".to_string()],
+                None,
+                mock_classes(),
+                CrealionContextType::Module,
+            )
+            .await;
+
+        let first_non_responsive_cls =
+            STYLITRON
+                .get("styles")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Styles(ref styles_defs) => {
+                        styles_defs.get("_").and_then(|pattern_styles| {
+                            pattern_styles
+                                .get("!important")
+                                .and_then(|importance_styles| {
+                                    importance_styles.get("background-color").and_then(
+                                        |property_styles| {
+                                            property_styles.get_index(0).and_then(
+                                                |(utility_name, _)| Some(utility_name.to_owned()),
+                                            )
+                                        },
+                                    )
+                                })
+                        })
+                    }
+                    _ => None,
+                });
+
+        assert!(first_non_responsive_cls.is_some());
+        assert_eq!(
+            first_non_responsive_cls.unwrap(),
+            "\\!bgd-clr-NmXB".to_string()
+        );
+
+        let first_responsive_cls =
+            STYLITRON
+                .get("responsive")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::ResponsiveStyles(ref styles_defs) => styles_defs
+                        .get("min-width:740px")
+                        .and_then(|breakpoint_styles| {
+                            breakpoint_styles.get("_").and_then(|pattern_styles| {
+                                pattern_styles
+                                    .get("!important")
+                                    .and_then(|importance_styles| {
+                                        importance_styles.get("background-color").and_then(
+                                            |property_styles| {
+                                                property_styles.get_index(0).and_then(
+                                                    |(utility_name, _)| {
+                                                        Some(utility_name.to_owned())
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    })
+                            })
+                        }),
+                    _ => None,
+                });
+
+        assert!(first_responsive_cls.is_some());
+        assert_eq!(
+            first_responsive_cls.unwrap(),
+            "mMd\\.\\!bgd-clr-a1Ib".to_string()
+        );
+
+        let second_non_responsive_cls =
+            STYLITRON
+                .get("styles")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::Styles(ref styles_defs) => {
+                        styles_defs.get(":hover").and_then(|pattern_styles| {
+                            pattern_styles.get("_").and_then(|importance_styles| {
+                                importance_styles.get("background-color").and_then(
+                                    |property_styles| {
+                                        property_styles.get_index(0).and_then(
+                                            |(utility_name, _)| Some(utility_name.to_owned()),
+                                        )
+                                    },
+                                )
+                            })
+                        })
+                    }
+                    _ => None,
+                });
+
+        assert!(second_non_responsive_cls.is_some());
+        assert_eq!(
+            second_non_responsive_cls.unwrap(),
+            "hvr\\.bgd-clr-DA0P".to_string()
+        );
+
+        let second_responsive_cls =
+            STYLITRON
+                .get("responsive")
+                .and_then(|stylitron_data| match &*stylitron_data {
+                    Stylitron::ResponsiveStyles(ref styles_defs) => styles_defs
+                        .get("min-width:740px")
+                        .and_then(|breakpoint_styles| {
+                            breakpoint_styles.get(":hover").and_then(|pattern_styles| {
+                                pattern_styles.get("_").and_then(|importance_styles| {
+                                    importance_styles.get("background-color").and_then(
+                                        |property_styles| {
+                                            property_styles.get_index(0).and_then(
+                                                |(utility_name, _)| Some(utility_name.to_owned()),
+                                            )
+                                        },
+                                    )
+                                })
+                            })
+                        }),
+                    _ => None,
+                });
+
+        assert!(second_responsive_cls.is_some());
+        assert_eq!(
+            second_responsive_cls.unwrap(),
+            "mMd\\.hvr\\.bgd-clr-fWgf".to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn tracking_map_exists_in_ast() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+
+        mock_breakpoints();
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let _ = crealion
+            .process_classes(
+                "firstClassContextName".to_string(),
+                vec!["firstClassContextName".to_string()],
+                None,
+                mock_classes(),
+                CrealionContextType::Module,
+            )
+            .await;
+
+        let classinator =
+            CLASSINATOR
+                .get("modules")
+                .and_then(|classinator_data| match &*classinator_data {
+                    Classinator::Modules(ref modules_map) => {
+                        modules_map.get("_").and_then(|maps| {
+                            maps.get("firstClassContextName")
+                                .and_then(|context_map| Some(context_map.to_owned()))
+                        })
+                    }
+                    _ => None,
+                });
+
+        assert!(classinator.is_some());
+        assert_eq!(
+            classinator.unwrap(),
+            IndexMap::from([
+                (
+                    "oneExtraClass".to_string(),
+                    IndexMap::from([(
+                        "thisJustAnotherClass".to_string(),
+                        vec![
+                            "\\!bgd-clr-NmXB".to_string(),
+                            "mMd\\.\\!bgd-clr-a1Ib".to_string()
+                        ]
+                    )])
+                ),
+                (
+                    "_".to_string(),
+                    IndexMap::from([(
+                        "oneExtraClass".to_string(),
+                        vec![
+                            "hvr\\.bgd-clr-DA0P".to_string(),
+                            "mMd\\.hvr\\.bgd-clr-fWgf".to_string()
+                        ]
+                    )])
+                )
+            ])
+        );
+    }
+}

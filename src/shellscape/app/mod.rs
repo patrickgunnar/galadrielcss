@@ -193,6 +193,9 @@ impl ShellscapeApp {
     /// Clears all alerts from the application.
     pub fn clear_alerts(&mut self) {
         self.alerts.clear();
+        self.table_scroll_state = ScrollbarState::new(0);
+        self.table_vertical_axis = 0;
+        self.table_scroll_len = 0;
     }
 
     /// Resets the port on which the server is running.
