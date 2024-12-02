@@ -5,6 +5,11 @@ use lazy_static::lazy_static;
 use crate::{types::{Classinator, Stylitron}, utils::generates_node_styles::generates_node_styles};
 
 lazy_static! {
+    // path: context_name
+    pub static ref INTAKER: DashMap<String, String> = DashMap::new();
+
+    pub static ref GATEKEEPER: DashMap<String, Vec<String>> = DashMap::new();
+    
     pub static ref CLASSINATOR: DashMap<String, Classinator> = {
         let map = DashMap::new();
 

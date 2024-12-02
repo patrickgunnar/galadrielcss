@@ -33,6 +33,8 @@ mod crealion;
 pub mod error;
 mod events;
 mod formera;
+mod gatekeeper;
+mod intaker;
 mod kickstartor;
 mod lothlorien;
 mod shellscape;

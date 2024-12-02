@@ -526,6 +526,7 @@ pub enum ErrorKind {
     TaskFailure,
     AccessDeniedToStylitronAST,
     AccessDeniedToClassinatorAST,
+    ContextNameConflict,
     Other,
 }
 

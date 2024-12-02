@@ -17,7 +17,9 @@ mod animations;
 mod breakpoints;
 mod classes;
 mod classinator;
+mod gatekeeper;
 mod imports;
+mod intaker;
 mod processors;
 mod themes;
 mod typefaces;
@@ -226,6 +228,8 @@ impl Crealion {
         // Extract the layout name for use as the context identifier.
         let context_name = context.layout_name.to_owned();
 
+        self.validates_context_name(context_name.to_owned(), self.path.to_owned())?;
+
         tracing::debug!(
             "Initializing Layout Context Collector for context: {}",
             context_name
@@ -325,7 +329,7 @@ impl Crealion {
             context_name
         );
 
-        Ok(None)
+        Ok(self.retrieve_module_layout_relationship(&context_name))
     }
 
     /// Initializes the module context by processing variables, aliases, animations, and classes.
@@ -336,7 +340,9 @@ impl Crealion {
         // Extract the module name to use as the context identifier.
         let context_name = context.module_name.to_owned();
         // Extract the name of the context from which this module extends, or use an empty string if none.
-        let extended_from = context.extending_from.to_owned().unwrap_or("".to_string());
+        let extended_from = context.extending_from.to_owned().unwrap_or("_".to_string());
+
+        self.validates_context_name(context_name.to_string(), self.path.to_string())?;
 
         tracing::debug!(
             "Initializing Module Context Collector for context: {}",
@@ -384,7 +390,7 @@ impl Crealion {
         ];
 
         // Remove empty context names from the list to ensure only valid entries remain.
-        inherited_contexts.retain(|v| !v.is_empty());
+        inherited_contexts.retain(|v| v != "_");
 
         tracing::debug!(
             "Inherited contexts prepared for animations and classes: {:?}",
@@ -424,6 +430,8 @@ impl Crealion {
             "Module Context Collector initialization completed for: {}",
             context_name
         );
+
+        self.register_module_layout_relationship(extended_from, self.path.to_owned());
 
         Ok(None)
     }
