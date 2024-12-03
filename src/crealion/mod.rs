@@ -228,6 +228,8 @@ impl Crealion {
         // Extract the layout name for use as the context identifier.
         let context_name = context.layout_name.to_owned();
 
+        // Ensures that the current context is not being used by another context.
+        // Context names must be globally unique to prevent conflicts.
         self.validates_context_name(context_name.to_owned(), self.path.to_owned())?;
 
         tracing::debug!(
@@ -329,6 +331,9 @@ impl Crealion {
             context_name
         );
 
+        // Collects the paths related to the current layout context.
+        // If a relationship exists, Galadriel CSS reprocesses the modules associated with the current layout context.
+        // This ensures that all related contexts are updated with the latest styles, maintaining consistency and synchronization.
         Ok(self.retrieve_module_layout_relationship(&context_name))
     }
 
@@ -342,6 +347,8 @@ impl Crealion {
         // Extract the name of the context from which this module extends, or use an empty string if none.
         let extended_from = context.extending_from.to_owned().unwrap_or("_".to_string());
 
+        // Ensures that the current context is not being used by another context.
+        // Context names must be globally unique to prevent conflicts.
         self.validates_context_name(context_name.to_string(), self.path.to_string())?;
 
         tracing::debug!(
@@ -431,6 +438,7 @@ impl Crealion {
             context_name
         );
 
+        // Registers the relationship between the extended layout (specified by its name) and the current file path.
         self.register_module_layout_relationship(extended_from, self.path.to_owned());
 
         Ok(None)
@@ -498,6 +506,239 @@ impl Crealion {
                 join_error,
                 err
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use nenyr::NenyrParser;
+    use tokio::sync::mpsc;
+
+    use crate::{
+        asts::STYLITRON, types::Stylitron, utils::generates_node_styles::generates_node_styles,
+    };
+
+    use super::Crealion;
+
+    fn reset_stylitron() {
+        STYLITRON.clear();
+
+        STYLITRON.insert("imports".to_string(), Stylitron::Imports(IndexMap::new()));
+        STYLITRON.insert("aliases".to_string(), Stylitron::Aliases(IndexMap::new()));
+        STYLITRON.insert(
+            "breakpoints".to_string(),
+            Stylitron::Breakpoints(IndexMap::new()),
+        );
+        STYLITRON.insert(
+            "typefaces".to_string(),
+            Stylitron::Typefaces(IndexMap::new()),
+        );
+        STYLITRON.insert(
+            "variables".to_string(),
+            Stylitron::Variables(IndexMap::new()),
+        );
+        STYLITRON.insert("themes".to_string(), Stylitron::Themes(IndexMap::new()));
+        STYLITRON.insert(
+            "animations".to_string(),
+            Stylitron::Animation(IndexMap::new()),
+        );
+        STYLITRON.insert(
+            "styles".to_string(),
+            Stylitron::Styles(generates_node_styles()),
+        );
+        STYLITRON.insert(
+            "responsive".to_string(),
+            Stylitron::ResponsiveStyles(IndexMap::new()),
+        );
+    }
+
+    #[tokio::test]
+    async fn central_context_created_with_success() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(25)).await;
+
+        match std::fs::read_to_string("src/crealion/mocks/central.nyr") {
+            Ok(raw_nenyr) => {
+                let mut parser = NenyrParser::new();
+
+                match parser.parse(raw_nenyr, "src/crealion/mocks/central.nyr".to_string()) {
+                    Ok(parsed_ast) => {
+                        reset_stylitron();
+
+                        let (sender, _) = mpsc::unbounded_channel();
+
+                        let mut crealion = Crealion::new(
+                            sender,
+                            parsed_ast,
+                            "src/crealion/mocks/central.nyr".to_string(),
+                        );
+
+                        let result = crealion.create().await;
+
+                        assert!(result.is_ok());
+                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(
+                            STYLITRON.get("breakpoints").map(|v| format!("{:?}", &*v)),
+                            Some("Breakpoints({\"mobile-first\": {\"onMobXs\": \"min-width:360px\"}, \"desktop-first\": {\"onDeskSmall\": \"max-width:1024px\"}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("typefaces").map(|v| format!("{:?}", &*v)),
+                            Some("Typefaces({\"roseMartin\": \"./typefaces/rosemartin.regular.otf\"})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("imports").map(|v| format!("{:?}", &*v)),
+                            Some("Imports({\"https://fonts.googleapis.com/css2?family=Matemasie&display=swap\": ()})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("themes").map(|v| format!("{:?}", &*v)),
+                            Some("Themes({\"gCtxCen_8Xq4ZJ\": {\"light\": {\"primaryColor\": [\"--gNKGUE7AAmy\", \"#FFFFFF\"]}, \"dark\": {\"primaryColor\": [\"--gNKGUE7AAmy\", \"#1E1E1E\"]}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("aliases").map(|v| format!("{:?}", &*v)),
+                            Some("Aliases({\"gCtxCen_8Xq4ZJ\": {\"bgd\": \"background\", \"dp\": \"display\", \"transf\": \"transform\", \"pdg\": \"padding\", \"wd\": \"width\", \"hgt\": \"height\", \"flexDir\": \"flex-direction\"}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("variables").map(|v| format!("{:?}", &*v)),
+                            Some("Variables({\"gCtxCen_8Xq4ZJ\": {\"myColor\": [\"--gW1yAqTMgoH\", \"#FF6677\"]}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("animations").map(|v| format!("{:?}", &*v)),
+                            Some("Animation({\"gCtxCen_8Xq4ZJ\": {\"slideScale\": {\"giq8HPC3JaYa\": {\"20%\": {\"transform\": \"translateX(10%) scale(1.1)\"}, \"40%,60%\": {\"transform\": \"translateX(30%) scale(1.2)\"}, \"80%\": {\"transform\": \"translateX(50%) scale(0.9)\"}, \"100%\": {\"transform\": \"translateX(0) scale(1)\"}}}, \"borderFlash\": {\"gpKLT8POASvU\": {\"10%\": {\"border-color\": \"var(--gW1yAqTMgoH)\", \"border-width\": \"1px\"}, \"30%,50%,70%\": {\"border-color\": \"red\", \"border-width\": \"3px\"}, \"90%\": {\"border-color\": \"green\", \"border-width\": \"2px\"}, \"100%\": {\"border-color\": \"var(--gW1yAqTMgoH)\", \"border-width\": \"1px\"}}}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("styles").map(|v| format!("{:?}", &*v)),
+                            Some("Styles({\"_\": {\"!important\": {\"background\": {\"\\\\!bgd-kobF\": \"var(--gNKGUE7AAmy)\"}, \"color\": {\"\\\\!clr-UZ6Q\": \"var(--gW1yAqTMgoH)\"}, \"padding\": {\"\\\\!pdg-3KtM\": \"10px\"}, \"display\": {\"\\\\!dpy-5TuI\": \"flex\"}, \"align-items\": {\"\\\\!lgn-tms-sLJ6\": \"center\"}}, \"_\": {}}, \"::after\": {\"!important\": {\"content\": {\"\\\\!ftr\\\\.ctt-WT3W\": \"' '\"}, \"display\": {\"\\\\!ftr\\\\.dpy-S4vd\": \"block\"}, \"width\": {\"\\\\!ftr\\\\.wth-YYq9\": \"100%\"}, \"height\": {\"\\\\!ftr\\\\.hht-9X8O\": \"2px\"}, \"background\": {\"\\\\!ftr\\\\.bgd-kobF\": \"var(--gNKGUE7AAmy)\"}}, \"_\": {}}, \"::before\": {\"!important\": {}, \"_\": {}}, \"::first-line\": {\"!important\": {}, \"_\": {}}, \"::first-letter\": {\"!important\": {}, \"_\": {}}, \":hover\": {\"!important\": {\"color\": {\"\\\\!hvr\\\\.clr-UZ6Q\": \"var(--gW1yAqTMgoH)\"}, \"border\": {\"\\\\!hvr\\\\.bdr-Csem\": \"2px solid var(--gNKGUE7AAmy)\"}, \"animation-name\": {\"\\\\!hvr\\\\.ntn-nm-Y1vH\": \"gpKLT8POASvU\"}}, \"_\": {}}, \":active\": {\"!important\": {}, \"_\": {}}, \":focus\": {\"!important\": {}, \"_\": {}}, \":first-child\": {\"!important\": {}, \"_\": {}}, \":last-child\": {\"!important\": {}, \"_\": {}}, \":first-of-type\": {\"!important\": {}, \"_\": {}}, \":last-of-type\": {\"!important\": {}, \"_\": {}}, \":only-child\": {\"!important\": {}, \"_\": {}}, \":only-of-type\": {\"!important\": {}, \"_\": {}}, \":target\": {\"!important\": {}, \"_\": {}}, \":visited\": {\"!important\": {}, \"_\": {}}, \":checked\": {\"!important\": {}, \"_\": {}}, \":disabled\": {\"!important\": {}, \"_\": {}}, \":enabled\": {\"!important\": {}, \"_\": {}}, \":read-only\": {\"!important\": {}, \"_\": {}}, \":read-write\": {\"!important\": {}, \"_\": {}}, \":placeholder-shown\": {\"!important\": {}, \"_\": {}}, \":valid\": {\"!important\": {}, \"_\": {}}, \":invalid\": {\"!important\": {}, \"_\": {}}, \":required\": {\"!important\": {}, \"_\": {}}, \":optional\": {\"!important\": {}, \"_\": {}}, \":fullscreen\": {\"!important\": {}, \"_\": {}}, \":focus-within\": {\"!important\": {}, \"_\": {}}, \":out-of-range\": {\"!important\": {}, \"_\": {}}, \":root\": {\"!important\": {}, \"_\": {}}, \":empty\": {\"!important\": {}, \"_\": {}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("responsive").map(|v| format!("{:?}", &*v)),
+                            Some("ResponsiveStyles({\"min-width:360px\": {\"_\": {\"!important\": {\"display\": {\"nbs\\\\.\\\\!dpy-S4vd\": \"block\"}, \"flex-direction\": {\"nbs\\\\.\\\\!flx-dcn-w5ZN\": \"column\"}, \"padding\": {\"nbs\\\\.\\\\!pdg-3JDd\": \"15px\"}}, \"_\": {}}, \"::after\": {\"!important\": {}, \"_\": {}}, \"::before\": {\"!important\": {}, \"_\": {}}, \"::first-line\": {\"!important\": {}, \"_\": {}}, \"::first-letter\": {\"!important\": {}, \"_\": {}}, \":hover\": {\"!important\": {}, \"_\": {}}, \":active\": {\"!important\": {}, \"_\": {}}, \":focus\": {\"!important\": {}, \"_\": {}}, \":first-child\": {\"!important\": {}, \"_\": {}}, \":last-child\": {\"!important\": {}, \"_\": {}}, \":first-of-type\": {\"!important\": {}, \"_\": {}}, \":last-of-type\": {\"!important\": {}, \"_\": {}}, \":only-child\": {\"!important\": {}, \"_\": {}}, \":only-of-type\": {\"!important\": {}, \"_\": {}}, \":target\": {\"!important\": {}, \"_\": {}}, \":visited\": {\"!important\": {}, \"_\": {}}, \":checked\": {\"!important\": {}, \"_\": {}}, \":disabled\": {\"!important\": {}, \"_\": {}}, \":enabled\": {\"!important\": {}, \"_\": {}}, \":read-only\": {\"!important\": {}, \"_\": {}}, \":read-write\": {\"!important\": {}, \"_\": {}}, \":placeholder-shown\": {\"!important\": {}, \"_\": {}}, \":valid\": {\"!important\": {}, \"_\": {}}, \":invalid\": {\"!important\": {}, \"_\": {}}, \":required\": {\"!important\": {}, \"_\": {}}, \":optional\": {\"!important\": {}, \"_\": {}}, \":fullscreen\": {\"!important\": {}, \"_\": {}}, \":focus-within\": {\"!important\": {}, \"_\": {}}, \":out-of-range\": {\"!important\": {}, \"_\": {}}, \":root\": {\"!important\": {}, \"_\": {}}, \":empty\": {\"!important\": {}, \"_\": {}}}, \"max-width:1024px\": {\"_\": {\"!important\": {}, \"_\": {}}, \"::after\": {\"!important\": {}, \"_\": {}}, \"::before\": {\"!important\": {}, \"_\": {}}, \"::first-line\": {\"!important\": {}, \"_\": {}}, \"::first-letter\": {\"!important\": {}, \"_\": {}}, \":hover\": {\"!important\": {\"background\": {\"nSl\\\\.\\\\!hvr\\\\.bgd-kobF\": \"var(--gNKGUE7AAmy)\"}, \"padding\": {\"nSl\\\\.\\\\!hvr\\\\.pdg-3Kvn\": \"20px\"}}, \"_\": {}}, \":active\": {\"!important\": {}, \"_\": {}}, \":focus\": {\"!important\": {}, \"_\": {}}, \":first-child\": {\"!important\": {}, \"_\": {}}, \":last-child\": {\"!important\": {}, \"_\": {}}, \":first-of-type\": {\"!important\": {}, \"_\": {}}, \":last-of-type\": {\"!important\": {}, \"_\": {}}, \":only-child\": {\"!important\": {}, \"_\": {}}, \":only-of-type\": {\"!important\": {}, \"_\": {}}, \":target\": {\"!important\": {}, \"_\": {}}, \":visited\": {\"!important\": {}, \"_\": {}}, \":checked\": {\"!important\": {}, \"_\": {}}, \":disabled\": {\"!important\": {}, \"_\": {}}, \":enabled\": {\"!important\": {}, \"_\": {}}, \":read-only\": {\"!important\": {}, \"_\": {}}, \":read-write\": {\"!important\": {}, \"_\": {}}, \":placeholder-shown\": {\"!important\": {}, \"_\": {}}, \":valid\": {\"!important\": {}, \"_\": {}}, \":invalid\": {\"!important\": {}, \"_\": {}}, \":required\": {\"!important\": {}, \"_\": {}}, \":optional\": {\"!important\": {}, \"_\": {}}, \":fullscreen\": {\"!important\": {}, \"_\": {}}, \":focus-within\": {\"!important\": {}, \"_\": {}}, \":out-of-range\": {\"!important\": {}, \"_\": {}}, \":root\": {\"!important\": {}, \"_\": {}}, \":empty\": {\"!important\": {}, \"_\": {}}}})".to_string())
+                        );
+                    }
+                    Err(err) => {
+                        panic!("{:?}", err)
+                    }
+                }
+            }
+            Err(err) => {
+                panic!("{}", err.to_string());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn layout_context_created_with_success() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+
+        match std::fs::read_to_string("src/crealion/mocks/layout.nyr") {
+            Ok(raw_nenyr) => {
+                let mut parser = NenyrParser::new();
+
+                match parser.parse(raw_nenyr, "src/crealion/mocks/layout.nyr".to_string()) {
+                    Ok(parsed_ast) => {
+                        reset_stylitron();
+
+                        let (sender, _) = mpsc::unbounded_channel();
+
+                        let mut crealion = Crealion::new(
+                            sender,
+                            parsed_ast,
+                            "src/crealion/mocks/layout.nyr".to_string(),
+                        );
+
+                        let result = crealion.create().await;
+
+                        assert!(result.is_ok());
+                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(
+                            STYLITRON.get("themes").map(|v| format!("{:?}", &*v)),
+                            Some("Themes({\"dynamicLayout\": {\"light\": {\"primaryColor\": [\"--gNDnNldHTaq\", \"#FFFFFF\"]}, \"dark\": {\"primaryColor\": [\"--gNDnNldHTaq\", \"#1E1E1E\"]}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("aliases").map(|v| format!("{:?}", &*v)),
+                            Some("Aliases({\"dynamicLayout\": {\"bgd\": \"background\", \"dp\": \"display\", \"transf\": \"transform\", \"pdg\": \"padding\", \"wd\": \"width\", \"hgt\": \"height\", \"flexDir\": \"flex-direction\"}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("variables").map(|v| format!("{:?}", &*v)),
+                            Some("Variables({\"dynamicLayout\": {\"myColor\": [\"--gUcAVe3Ho2h\", \"#FF6677\"]}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("animations").map(|v| format!("{:?}", &*v)),
+                            Some("Animation({\"dynamicLayout\": {\"borderFlash\": {\"gmLUMBMQvsEE\": {\"10%\": {\"border-color\": \"var(--gUcAVe3Ho2h)\", \"border-width\": \"1px\"}, \"30%,50%,70%\": {\"border-color\": \"red\", \"border-width\": \"3px\"}, \"90%\": {\"border-color\": \"green\", \"border-width\": \"2px\"}, \"100%\": {\"border-color\": \"var(--gUcAVe3Ho2h)\", \"border-width\": \"1px\"}}}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("styles").map(|v| format!("{:?}", &*v)),
+                            Some("Styles({\"_\": {\"!important\": {\"background\": {\"\\\\!bgd-zwSc\": \"var(--gNDnNldHTaq)\"}, \"color\": {\"\\\\!clr-4W4E\": \"var(--gUcAVe3Ho2h)\"}, \"padding\": {\"\\\\!pdg-3KtM\": \"10px\"}, \"display\": {\"\\\\!dpy-5TuI\": \"flex\"}, \"align-items\": {\"\\\\!lgn-tms-sLJ6\": \"center\"}}, \"_\": {}}, \"::after\": {\"!important\": {\"content\": {\"\\\\!ftr\\\\.ctt-WT3W\": \"' '\"}, \"display\": {\"\\\\!ftr\\\\.dpy-S4vd\": \"block\"}, \"width\": {\"\\\\!ftr\\\\.wth-YYq9\": \"100%\"}, \"height\": {\"\\\\!ftr\\\\.hht-9X8O\": \"2px\"}, \"background\": {\"\\\\!ftr\\\\.bgd-zwSc\": \"var(--gNDnNldHTaq)\"}}, \"_\": {}}, \"::before\": {\"!important\": {}, \"_\": {}}, \"::first-line\": {\"!important\": {}, \"_\": {}}, \"::first-letter\": {\"!important\": {}, \"_\": {}}, \":hover\": {\"!important\": {\"color\": {\"\\\\!hvr\\\\.clr-4W4E\": \"var(--gUcAVe3Ho2h)\"}, \"border\": {\"\\\\!hvr\\\\.bdr-akTf\": \"2px solid var(--gNDnNldHTaq)\"}, \"animation-name\": {\"\\\\!hvr\\\\.ntn-nm-wVho\": \"gmLUMBMQvsEE\"}}, \"_\": {}}, \":active\": {\"!important\": {}, \"_\": {}}, \":focus\": {\"!important\": {}, \"_\": {}}, \":first-child\": {\"!important\": {}, \"_\": {}}, \":last-child\": {\"!important\": {}, \"_\": {}}, \":first-of-type\": {\"!important\": {}, \"_\": {}}, \":last-of-type\": {\"!important\": {}, \"_\": {}}, \":only-child\": {\"!important\": {}, \"_\": {}}, \":only-of-type\": {\"!important\": {}, \"_\": {}}, \":target\": {\"!important\": {}, \"_\": {}}, \":visited\": {\"!important\": {}, \"_\": {}}, \":checked\": {\"!important\": {}, \"_\": {}}, \":disabled\": {\"!important\": {}, \"_\": {}}, \":enabled\": {\"!important\": {}, \"_\": {}}, \":read-only\": {\"!important\": {}, \"_\": {}}, \":read-write\": {\"!important\": {}, \"_\": {}}, \":placeholder-shown\": {\"!important\": {}, \"_\": {}}, \":valid\": {\"!important\": {}, \"_\": {}}, \":invalid\": {\"!important\": {}, \"_\": {}}, \":required\": {\"!important\": {}, \"_\": {}}, \":optional\": {\"!important\": {}, \"_\": {}}, \":fullscreen\": {\"!important\": {}, \"_\": {}}, \":focus-within\": {\"!important\": {}, \"_\": {}}, \":out-of-range\": {\"!important\": {}, \"_\": {}}, \":root\": {\"!important\": {}, \"_\": {}}, \":empty\": {\"!important\": {}, \"_\": {}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("responsive").map(|v| format!("{:?}", &*v)),
+                            Some("ResponsiveStyles({})".to_string())
+                        );
+                    }
+                    Err(err) => {
+                        panic!("{:?}", err)
+                    }
+                }
+            }
+            Err(err) => {
+                panic!("{}", err.to_string());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn module_context_created_with_success() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(35)).await;
+
+        match std::fs::read_to_string("src/crealion/mocks/module.nyr") {
+            Ok(raw_nenyr) => {
+                let mut parser = NenyrParser::new();
+
+                match parser.parse(raw_nenyr, "src/crealion/mocks/module.nyr".to_string()) {
+                    Ok(parsed_ast) => {
+                        reset_stylitron();
+
+                        let (sender, _) = mpsc::unbounded_channel();
+
+                        let mut crealion = Crealion::new(
+                            sender,
+                            parsed_ast,
+                            "src/crealion/mocks/module.nyr".to_string(),
+                        );
+
+                        let result = crealion.create().await;
+
+                        assert!(result.is_ok());
+                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(
+                            STYLITRON.get("aliases").map(|v| format!("{:?}", &*v)),
+                            Some("Aliases({\"modernCanvas\": {\"bgd\": \"background\", \"dp\": \"display\", \"transf\": \"transform\", \"pdg\": \"padding\", \"wd\": \"width\", \"hgt\": \"height\", \"flexDir\": \"flex-direction\"}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("variables").map(|v| format!("{:?}", &*v)),
+                            Some("Variables({\"modernCanvas\": {\"myColor\": [\"--gdixceenEK6\", \"#FF6677\"]}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("animations").map(|v| format!("{:?}", &*v)),
+                            Some("Animation({\"modernCanvas\": {\"borderFlash\": {\"gvd4g8WU1iS7\": {\"10%\": {\"border-color\": \"var(--gdixceenEK6)\", \"border-width\": \"1px\"}, \"30%,50%,70%\": {\"border-color\": \"red\", \"border-width\": \"3px\"}, \"90%\": {\"border-color\": \"green\", \"border-width\": \"2px\"}, \"100%\": {\"border-color\": \"var(--gdixceenEK6)\", \"border-width\": \"1px\"}}}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("styles").map(|v| format!("{:?}", &*v)),
+                            Some("Styles({\"_\": {\"!important\": {\"color\": {\"\\\\!clr-nyD2\": \"var(--gdixceenEK6)\"}, \"padding\": {\"\\\\!pdg-3KtM\": \"10px\"}, \"display\": {\"\\\\!dpy-5TuI\": \"flex\"}, \"align-items\": {\"\\\\!lgn-tms-sLJ6\": \"center\"}}, \"_\": {}}, \"::after\": {\"!important\": {\"content\": {\"\\\\!ftr\\\\.ctt-WT3W\": \"' '\"}, \"display\": {\"\\\\!ftr\\\\.dpy-S4vd\": \"block\"}, \"width\": {\"\\\\!ftr\\\\.wth-YYq9\": \"100%\"}, \"height\": {\"\\\\!ftr\\\\.hht-9X8O\": \"2px\"}}, \"_\": {}}, \"::before\": {\"!important\": {}, \"_\": {}}, \"::first-line\": {\"!important\": {}, \"_\": {}}, \"::first-letter\": {\"!important\": {}, \"_\": {}}, \":hover\": {\"!important\": {\"color\": {\"\\\\!hvr\\\\.clr-nyD2\": \"var(--gdixceenEK6)\"}, \"animation-name\": {\"\\\\!hvr\\\\.ntn-nm-xyuz\": \"gvd4g8WU1iS7\"}}, \"_\": {}}, \":active\": {\"!important\": {}, \"_\": {}}, \":focus\": {\"!important\": {}, \"_\": {}}, \":first-child\": {\"!important\": {}, \"_\": {}}, \":last-child\": {\"!important\": {}, \"_\": {}}, \":first-of-type\": {\"!important\": {}, \"_\": {}}, \":last-of-type\": {\"!important\": {}, \"_\": {}}, \":only-child\": {\"!important\": {}, \"_\": {}}, \":only-of-type\": {\"!important\": {}, \"_\": {}}, \":target\": {\"!important\": {}, \"_\": {}}, \":visited\": {\"!important\": {}, \"_\": {}}, \":checked\": {\"!important\": {}, \"_\": {}}, \":disabled\": {\"!important\": {}, \"_\": {}}, \":enabled\": {\"!important\": {}, \"_\": {}}, \":read-only\": {\"!important\": {}, \"_\": {}}, \":read-write\": {\"!important\": {}, \"_\": {}}, \":placeholder-shown\": {\"!important\": {}, \"_\": {}}, \":valid\": {\"!important\": {}, \"_\": {}}, \":invalid\": {\"!important\": {}, \"_\": {}}, \":required\": {\"!important\": {}, \"_\": {}}, \":optional\": {\"!important\": {}, \"_\": {}}, \":fullscreen\": {\"!important\": {}, \"_\": {}}, \":focus-within\": {\"!important\": {}, \"_\": {}}, \":out-of-range\": {\"!important\": {}, \"_\": {}}, \":root\": {\"!important\": {}, \"_\": {}}, \":empty\": {\"!important\": {}, \"_\": {}}})".to_string())
+                        );
+                        assert_eq!(
+                            STYLITRON.get("responsive").map(|v| format!("{:?}", &*v)),
+                            Some("ResponsiveStyles({})".to_string())
+                        );
+                    }
+                    Err(err) => {
+                        panic!("{:?}", err)
+                    }
+                }
+            }
+            Err(err) => {
+                panic!("{}", err.to_string());
+            }
         }
     }
 }

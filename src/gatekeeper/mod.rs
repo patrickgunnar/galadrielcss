@@ -29,3 +29,40 @@ pub fn remove_path_from_gatekeeper(file_path: &str) {
             .retain(|module_path| module_path != file_path);
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{asts::GATEKEEPER, gatekeeper::remove_path_from_gatekeeper};
+
+    #[test]
+    fn remove_path_from_gatekeeper_with_success() {
+        GATEKEEPER.insert(
+            "myRemovingContext".to_string(),
+            vec!["path/to/be/removed.nyr".to_string()],
+        );
+
+        let ctx = GATEKEEPER
+            .get("myRemovingContext")
+            .map(|entry| entry.value().to_owned());
+
+        assert!(ctx.is_some());
+        assert_eq!(ctx.unwrap(), vec!["path/to/be/removed.nyr".to_string()]);
+
+        remove_path_from_gatekeeper("path/to/be/removed.nyr");
+
+        let ctx = GATEKEEPER
+            .get("myRemovingContext")
+            .iter()
+            .find_map(|entry| {
+                entry.value().iter().find_map(|path| {
+                    if path == "path/to/be/removed.nyr" {
+                        return Some(path.clone());
+                    }
+
+                    None
+                })
+            });
+
+        assert!(ctx.is_none());
+    }
+}

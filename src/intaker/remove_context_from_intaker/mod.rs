@@ -19,3 +19,31 @@ pub fn remove_context_from_intaker(file_path: &str) {
     // Remove the entry from the global INTAKER registry using the file path as the key.
     INTAKER.remove(file_path);
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{asts::INTAKER, intaker::remove_context_from_intaker::remove_context_from_intaker};
+
+    #[test]
+    fn context_did_remove() {
+        INTAKER.insert(
+            "path/to/be/removed".to_string(),
+            "myRemovedContext".to_string(),
+        );
+
+        let ctx = INTAKER
+            .get("path/to/be/removed")
+            .map(|entry| entry.value().to_owned());
+
+        assert!(ctx.is_some());
+        assert_eq!(ctx.unwrap(), "myRemovedContext".to_string());
+
+        remove_context_from_intaker("path/to/be/removed");
+
+        let ctx = INTAKER
+            .get("path/to/be/removed")
+            .map(|entry| entry.value().to_owned());
+
+        assert!(ctx.is_none());
+    }
+}

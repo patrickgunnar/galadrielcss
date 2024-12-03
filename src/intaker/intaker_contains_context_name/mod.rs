@@ -28,3 +28,25 @@ pub fn intaker_contains_context_name(context_name: &str) -> bool {
     // Iterate over each entry in the INTAKER registry and check if the value matches the given context_name.
     INTAKER.iter().any(|entry| entry.value() == context_name)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        asts::INTAKER, intaker::intaker_contains_context_name::intaker_contains_context_name,
+    };
+
+    #[test]
+    fn context_exists_in_ast() {
+        INTAKER.insert(
+            "path/to/existing/context".to_string(),
+            "myContextExists".to_string(),
+        );
+
+        assert!(intaker_contains_context_name("myContextExists"));
+    }
+
+    #[test]
+    fn non_existing_context_in_ast() {
+        assert!(!intaker_contains_context_name("myNonExistingContext"));
+    }
+}

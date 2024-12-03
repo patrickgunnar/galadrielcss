@@ -76,3 +76,52 @@ impl Crealion {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{asts::INTAKER, crealion::Crealion};
+
+    #[test]
+    fn context_name_is_valid() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let result = crealion.validates_context_name(
+            "noExistingContextName".to_string(),
+            "path/to/context.nyr".to_string(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn context_name_is_not_valid() {
+        INTAKER.insert(
+            "path/to/context_1.nyr".to_string(),
+            "newContextName".to_string(),
+        );
+
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        let result = crealion.validates_context_name(
+            "newContextName".to_string(),
+            "path/to/context_2.nyr".to_string(),
+        );
+
+        assert!(result.is_err());
+    }
+}

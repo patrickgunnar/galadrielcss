@@ -65,3 +65,65 @@ impl Crealion {
             .map(|entry| entry.value().to_vec())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nenyr::types::{ast::NenyrAst, central::CentralContext};
+    use tokio::sync::mpsc;
+
+    use crate::{asts::GATEKEEPER, crealion::Crealion};
+
+    #[test]
+    fn registering_context_with_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        crealion.register_module_layout_relationship(
+            "myRegisteringLayoutName".to_string(),
+            "path/to/module_03.nyr".to_string(),
+        );
+
+        let ctx = GATEKEEPER
+            .get("myRegisteringLayoutName")
+            .map(|entry| entry.value().to_owned());
+
+        assert!(ctx.is_some());
+        assert_eq!(ctx.unwrap(), vec!["path/to/module_03.nyr".to_string()]);
+    }
+
+    #[test]
+    fn retrieving_context_with_success() {
+        let (sender, _) = mpsc::unbounded_channel();
+
+        let crealion = Crealion::new(
+            sender,
+            NenyrAst::CentralContext(CentralContext::new()),
+            "".to_string(),
+        );
+
+        crealion.register_module_layout_relationship(
+            "myRetrievingLayoutName".to_string(),
+            "path/to/module_04.nyr".to_string(),
+        );
+
+        let ctx = GATEKEEPER
+            .get("myRetrievingLayoutName")
+            .map(|entry| entry.value().to_owned());
+
+        assert!(ctx.is_some());
+        assert_eq!(ctx.unwrap(), vec!["path/to/module_04.nyr".to_string()]);
+
+        let retrieved_ctx = crealion.retrieve_module_layout_relationship("myRetrievingLayoutName");
+
+        assert!(retrieved_ctx.is_some());
+        assert_eq!(
+            retrieved_ctx.unwrap(),
+            vec!["path/to/module_04.nyr".to_string()]
+        );
+    }
+}

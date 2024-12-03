@@ -1,0 +1,112 @@
+// Lorem ipsum dolor sit amet, consectetur adipiscing elit,
+// sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+// Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi
+// ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit
+// in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint
+// occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Construct Layout("dynamicLayout") {
+    // Lorem ipsum dolor sit amet, consectetur adipiscing elit,
+    // sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+    // Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi
+    // ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit
+    // in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint
+    // occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    Declare Themes({
+        Light({
+            Variables({
+                primaryColor: "#FFFFFF",
+            })
+        }),
+        Dark({
+            Variables({
+                primaryColor: "#1E1E1E",
+            })
+        })
+    }),
+    // occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    Declare Aliases({
+        // Background
+        bgd: background,
+        // Display
+        dp: display,
+        transf: transform,
+        pdg: padding,
+        wd: width,
+        hgt: height,
+        flexDir: flexDirection,
+    }),
+    // occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    Declare Variables({
+        /* Based color */
+        myColor: "#FF6677",
+    }),
+    /**
+      * Lorem ipsum dolor sit amet, consectetur adipiscing elit,
+      * sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+      * Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi
+      * ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit
+      * in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint
+      * occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    */
+    Declare Animation("borderFlash") {
+        Fraction(10, {
+            borderColor: "${myColor}",
+            borderWidth: "1px"
+        }),
+        Fraction([30, 50, 70], {
+            borderColor: "red",
+            borderWidth: "3px"
+        }),
+        Fraction(90, {
+            borderColor: "green",
+            borderWidth: "2px"
+        }),
+        Fraction(100, {
+            borderColor: "${myColor}",
+            borderWidth: "1px"
+        })
+    },
+    // Lorem ipsum dolor sit amet, consectetur adipiscing elit,
+    // sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+    // Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi
+    // ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit
+    // in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint
+    // occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    Declare Class("celestialHeron") Deriving("stardustFeather") {
+        Important(true),
+        Stylesheet({
+            bgd: "${primaryColor}",
+            color: "${myColor}",
+            pdg: "10px",
+            dp: "flex",
+            alignItems: "center"
+        }),
+        Hover({
+            color: "${myColor}",
+            border: "2px solid ${primaryColor}",
+            animationName: "${borderFlash}"
+        }),
+        After({
+            content: "' '",
+            dp: "block",
+            wd: "100%",
+            hgt: "2px",
+            bgd: "${primaryColor}"
+        }),
+        PanoramicViewer({
+            onMobTablet({
+                Stylesheet({
+                    dp: "block",
+                    flexDir: "column",
+                    pdg: "15px"
+                })
+            }),
+            onDeskDesktop({
+                Hover({
+                    bgd: "${primaryColor}",
+                    pdg: "20px"
+                })
+            })
+        })
+    },
+}
