@@ -1,11 +1,23 @@
-#[derive(Clone, PartialEq, Debug)]
-pub enum ProcessingState {
-    Running,
-    Awaiting,
+use std::path::PathBuf;
+
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
+pub enum BaraddurEventProcessorKind {
+    Modify,
+    Remove,
+    None,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
+pub enum BaraddurEventProcessor {
+    ProcessEvent {
+        kind: BaraddurEventProcessorKind,
+        path: PathBuf,
+    },
+    ReloadGaladrielConfigs,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum DebouncedWatch {
-    Continue,
-    Break,
+pub enum BaraddurRenameEventState {
+    Rename,
+    None,
 }

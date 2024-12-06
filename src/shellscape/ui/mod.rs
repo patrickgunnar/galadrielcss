@@ -219,6 +219,9 @@ impl<B: Backend> ShellscapeInterface<B> {
 
 #[cfg(test)]
 mod tests {
+
+    use tokio::sync;
+
     use crate::{
         configatron::Configatron,
         shellscape::{app::ShellscapeApp, ui::ShellscapeInterface, Shellscape},
@@ -247,6 +250,7 @@ mod tests {
         let shellscape = Shellscape::new();
         let terminal = shellscape.get_terminal().unwrap();
         let mut interface = ShellscapeInterface::new(terminal);
+        let (sender, _) = sync::broadcast::channel(0);
         let mut app = ShellscapeApp::new(
             Configatron::new(
                 vec![],
@@ -257,6 +261,7 @@ mod tests {
                 "1.0.0".to_string(),
             ),
             "1.0.0",
+            sender,
         )
         .unwrap();
 

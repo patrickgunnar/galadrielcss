@@ -4,7 +4,7 @@ use tracing::info;
 /// Represents configuration settings for the application, deserialized from a JSON file.
 ///
 /// Fields are deserialized using `serde`, with custom default functions specified for each.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ConfigurationJson {
     /// List of paths or identifiers to exclude from the process.
     /// Defaults to an empty vector if not provided.

@@ -69,13 +69,13 @@ impl Crealion {
 #[cfg(test)]
 mod tests {
     use nenyr::types::{ast::NenyrAst, central::CentralContext};
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{asts::GATEKEEPER, crealion::Crealion};
 
     #[test]
     fn registering_context_with_success() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn retrieving_context_with_success() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,

@@ -5,7 +5,7 @@ use tokio::task::JoinHandle;
 use crate::{
     asts::STYLITRON,
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     types::Stylitron,
 };
 
@@ -51,8 +51,7 @@ impl Crealion {
                     tracing::error!("Critical error encountered: {:?}", error);
 
                     // Generate an error notification to be sent to the appropriate handler.
-                    let notification =
-                        ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+                    let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                     // Attempt to send the error notification. Log any failures.
                     if let Err(err) = sender.send(notification) {
@@ -88,11 +87,9 @@ impl Crealion {
 mod tests {
     use indexmap::IndexMap;
     use nenyr::types::{ast::NenyrAst, central::CentralContext};
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
-    use crate::{
-        asts::STYLITRON, crealion::Crealion, shellscape::alerts::ShellscapeAlerts, types::Stylitron,
-    };
+    use crate::{asts::STYLITRON, crealion::Crealion, events::GaladrielAlerts, types::Stylitron};
 
     fn mock_typefaces() -> IndexMap<String, String> {
         IndexMap::from([
@@ -117,7 +114,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_typefaces_success() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -149,7 +146,7 @@ mod tests {
     async fn test_apply_typefaces_to_existing_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Pre-populate the STYLITRON AST with existing data.
         let initial_data =
@@ -185,7 +182,7 @@ mod tests {
     async fn test_apply_typefaces_to_new_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Ensure no existing context in the STYLITRON AST.
         let initial_data = IndexMap::new();
@@ -219,7 +216,7 @@ mod tests {
     async fn test_apply_typefaces_with_empty_typefaces_data() {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -251,7 +248,7 @@ mod tests {
     async fn test_apply_typefaces_no_typefaces_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = broadcast::channel(0);
 
         // Simulate an empty STYLITRON AST to trigger an error.
         STYLITRON.remove("typefaces");
@@ -267,8 +264,8 @@ mod tests {
             .await;
 
         // Verify that an error notification was sent.
-        if let Some(notification) = receiver.recv().await {
-            if let ShellscapeAlerts::GaladrielError {
+        if let Ok(notification) = receiver.recv().await {
+            if let GaladrielAlerts::GaladrielError {
                 start_time: _,
                 error,
             } = notification

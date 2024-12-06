@@ -10,13 +10,14 @@ use ratatui::{
 
 use textwrap::Options;
 
-use crate::{configatron::Configatron, error::GaladrielError};
-
-use super::{
-    alerts::{AlertTextType, ShellscapeAlerts},
-    app::ShellscapeApp,
-    area::ShellscapeArea,
+use crate::{
+    asts::PALANTIR_ALERTS,
+    configatron::Configatron,
+    error::GaladrielError,
+    events::{AlertTextType, GaladrielAlerts},
 };
+
+use super::{app::ShellscapeApp, area::ShellscapeArea};
 
 /// `ShellscapeWidgets` is a structure that holds color configurations and other settings
 /// to style various UI elements in a terminal-based application using `ratatui`.
@@ -1282,7 +1283,7 @@ impl ShellscapeWidgets {
     ///
     /// # Arguments
     /// - `textwrap_width: u16` - The width to which the alert texts will be wrapped.
-    /// - `alerts: Vec<ShellscapeAlerts>` - A vector containing the alerts to be processed.
+    /// - `alerts: Vec<GaladrielAlerts>` - A vector containing the alerts to be processed.
     /// - `app: &mut ShellscapeApp` - The application instance which provides alert data.
     ///
     /// # Returns
@@ -1290,7 +1291,7 @@ impl ShellscapeWidgets {
     fn process_alerts(
         &self,
         textwrap_width: u16,
-        alerts: Vec<ShellscapeAlerts>,
+        alerts: Vec<GaladrielAlerts>,
         app: &mut ShellscapeApp,
     ) -> Vec<Line> {
         let mut lines: Vec<Line> = vec![];
@@ -1310,14 +1311,14 @@ impl ShellscapeWidgets {
         for alert in alerts {
             match alert {
                 // Process a GaladrielError alert (likely related to a Galadriel-related process)
-                ShellscapeAlerts::GaladrielError { start_time, error } => {
+                GaladrielAlerts::GaladrielError { start_time, error } => {
                     let mut elements =
                         self.create_galadriel_error_alert(start_time, error, textwrap_width);
 
                     lines.append(&mut elements);
                 }
                 // Process an Information alert (general information message)
-                ShellscapeAlerts::Information {
+                GaladrielAlerts::Information {
                     start_time,
                     message,
                 } => {
@@ -1327,14 +1328,14 @@ impl ShellscapeWidgets {
                     lines.append(&mut elements);
                 }
                 // Process a NenyrError alert (likely related to the Nenyr parsing)
-                ShellscapeAlerts::NenyrError { start_time, error } => {
+                GaladrielAlerts::NenyrError { start_time, error } => {
                     let mut elements =
                         self.create_nenyr_error_alert(start_time, error, textwrap_width, app);
 
                     lines.append(&mut elements);
                 }
                 // Process a Success alert (successful operation with details)
-                ShellscapeAlerts::Success {
+                GaladrielAlerts::Success {
                     start_time,
                     ending_time,
                     duration,
@@ -1351,7 +1352,7 @@ impl ShellscapeWidgets {
                     lines.append(&mut elements);
                 }
                 // Process a Warning alert (general warning message)
-                ShellscapeAlerts::Warning {
+                GaladrielAlerts::Warning {
                     start_time,
                     message,
                 } => {
@@ -1361,7 +1362,7 @@ impl ShellscapeWidgets {
                     lines.append(&mut elements);
                 }
                 // Process a Text alert (custom message with a title and content)
-                ShellscapeAlerts::Text {
+                GaladrielAlerts::Text {
                     start_time,
                     title,
                     content,
@@ -1373,7 +1374,7 @@ impl ShellscapeWidgets {
                     lines.append(&mut elements);
                 }
                 // Process a Shortcuts alert (displays a list of keyboard shortcuts)
-                ShellscapeAlerts::Shortcuts {
+                GaladrielAlerts::Shortcuts {
                     start_time,
                     shortcuts,
                 } => {
@@ -1407,7 +1408,11 @@ impl ShellscapeWidgets {
         app: &mut ShellscapeApp,
     ) -> (Paragraph, usize) {
         // Retrieve alerts from the application instance
-        let alerts = app.get_alerts();
+        let alerts = match PALANTIR_ALERTS.get("alerts") {
+            Some(palantir) => palantir.value().to_owned(),
+            None => vec![],
+        };
+
         // Process the alerts to get a vector of formatted lines
         let lines = self.process_alerts(textwrap_width, alerts, app);
         // Get the total number of lines

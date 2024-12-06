@@ -6,28 +6,27 @@ use syntect::{
     highlighting::ThemeSet,
     parsing::{SyntaxReference, SyntaxSet, SyntaxSetBuilder},
 };
+use tokio::sync;
 use tracing::{debug, info};
 
 use crate::{
+    asts::PALANTIR_ALERTS,
     configatron::Configatron,
     error::{ErrorAction, ErrorKind, GaladrielError},
+    events::{AlertTextType, GaladrielAlerts},
     GaladrielResult,
 };
 
-use super::{
-    alerts::{AlertTextType, ShellscapeAlerts},
-    area::ShellscapeArea,
-    metadata::ShellscapeMetadata,
-};
+use super::{area::ShellscapeArea, metadata::ShellscapeMetadata};
 
 // The `ShellscapeApp` struct serves as the core representation of the terminal-based application, encapsulating its configuration, UI state, alerts, and various settings that control its behavior and appearance.
 // It leverages `ratatui` for rendering the UI, which enables managing interactive terminal-based UIs efficiently.
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ShellscapeApp {
+    palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     pub metadata: ShellscapeMetadata,
     pub configs: Configatron,
-    pub alerts: Vec<ShellscapeAlerts>,
     pub server_running_on_port: u16,
 
     pub table_scroll_state: ScrollbarState,
@@ -54,6 +53,7 @@ impl ShellscapeApp {
     /// # Arguments
     /// * `configs` - The configuration object (`Configatron`) to initialize the application with.
     /// * `version` - A string slice representing the current version of the application.
+    /// * `palantir_sender` - A channel used to send alerts to the terminal UI/User.
     ///
     /// # Returns
     /// Returns a `GaladrielResult<Self>`, which contains either a successfully initialized `ShellscapeApp`
@@ -63,7 +63,11 @@ impl ShellscapeApp {
     /// This function can return errors if:
     /// * The syntax set could not be loaded (`NenyrSyntaxIntegrationFailed`).
     /// * The `Nenyr` syntax could not be found in the syntax set (`NenyrSyntaxMissing`).
-    pub fn new(configs: Configatron, version: &str) -> GaladrielResult<Self> {
+    pub fn new(
+        configs: Configatron,
+        version: &str,
+        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    ) -> GaladrielResult<Self> {
         // Initialize application metadata
         let metadata = ShellscapeMetadata::new(
             "Galadriel CSS".to_string(),
@@ -102,7 +106,6 @@ impl ShellscapeApp {
 
         // Return a new ShellscapeApp instance with the configured values
         Ok(Self {
-            alerts: vec![],
             table_scroll_state: ScrollbarState::new(0),
             dock_scroll_state: ScrollbarState::new(0),
             table_area: ShellscapeArea::new(0, 0, 0, 0),
@@ -112,6 +115,7 @@ impl ShellscapeApp {
             dock_vertical_axis: 0,
             table_scroll_len: 0,
             dock_scroll_len: 0,
+            palantir_sender,
             configs,
             metadata,
             syntax_set,
@@ -149,7 +153,7 @@ impl ShellscapeApp {
             }
             Err(err) => {
                 // On error, add an alert to notify the user
-                self.add_alert(ShellscapeAlerts::create_galadriel_error(
+                self.add_alert(GaladrielAlerts::create_galadriel_error(
                     Local::now(),
                     GaladrielError::raise_general_interface_error(
                         ErrorKind::NenyrSyntaxHighlightingError,
@@ -163,36 +167,23 @@ impl ShellscapeApp {
         lines
     }
 
-    pub fn add_alerts_vec(&mut self, alerts: &mut Vec<ShellscapeAlerts>) {
-        alerts.append(&mut self.alerts);
+    pub fn add_alert(&self, notification: GaladrielAlerts) {
+        let palantir_sender = self.palantir_sender.clone();
 
-        if alerts.len() > 50 {
-            self.alerts = alerts[..49].to_vec();
-        } else {
-            self.alerts = alerts.to_vec();
-        }
-    }
-
-    /// Adds a new alert to the application.
-    ///
-    /// Alerts are added at the beginning of the alerts vector.
-    ///
-    /// # Arguments
-    /// * `alert` - The alert to be added to the application.
-    pub fn add_alert(&mut self, alert: ShellscapeAlerts) {
-        info!("Adding Galadriel notification in ShellscapeApp.");
-        debug!("New notification: {:?}", alert);
-
-        self.alerts.insert(0, alert);
-
-        if self.alerts.len() > 50 {
-            self.alerts.pop();
+        if let Err(err) = palantir_sender.send(notification) {
+            tracing::error!("Failed to send alert: {:?}", err);
         }
     }
 
     /// Clears all alerts from the application.
     pub fn clear_alerts(&mut self) {
-        self.alerts.clear();
+        match PALANTIR_ALERTS.get_mut("alerts") {
+            Some(ref mut palantir) => {
+                palantir.clear();
+            }
+            None => {}
+        }
+
         self.table_scroll_state = ScrollbarState::new(0);
         self.table_vertical_axis = 0;
         self.table_scroll_len = 0;
@@ -234,14 +225,6 @@ impl ShellscapeApp {
     /// Returns the port number (`u16`) on which the server is currently running.
     pub fn get_server_running_on_port(&self) -> u16 {
         self.server_running_on_port
-    }
-
-    /// Retrieves the list of all alerts currently stored in the application.
-    ///
-    /// # Returns
-    /// Returns a vector of `ShellscapeAlerts` containing all the notifications.
-    pub fn get_alerts(&self) -> Vec<ShellscapeAlerts> {
-        self.alerts.clone()
     }
 
     /// Retrieves the current configuration of the application.
@@ -442,7 +425,7 @@ impl ShellscapeApp {
             ),
         ];
 
-        self.add_alert(ShellscapeAlerts::create_shortcuts(Local::now(), shortcuts));
+        self.add_alert(GaladrielAlerts::create_shortcuts(Local::now(), shortcuts));
     }
 
     // Method to add a license alert, describing the terms for Galadriel CSS & Nenyr.
@@ -455,7 +438,7 @@ impl ShellscapeApp {
             String::from("The final paragraph wraps it all up nicely. Don't forget to smile: \u{1F642}, \u{1F60A}, \u{1F60D}.")
         ];
 
-        self.add_alert(ShellscapeAlerts::create_text(
+        self.add_alert(GaladrielAlerts::create_text(
             AlertTextType::License,
             Local::now(),
             title,
@@ -473,7 +456,7 @@ impl ShellscapeApp {
             String::from("The final paragraph wraps it all up nicely. Don't forget to smile: \u{1F642}, \u{1F60A}, \u{1F60D}.")
         ];
 
-        self.add_alert(ShellscapeAlerts::create_text(
+        self.add_alert(GaladrielAlerts::create_text(
             AlertTextType::Donation,
             Local::now(),
             title,
@@ -491,7 +474,7 @@ impl ShellscapeApp {
             String::from("The final paragraph wraps it all up nicely. Don't forget to smile: \u{1F642}, \u{1F60A}, \u{1F60D}.")
         ];
 
-        self.add_alert(ShellscapeAlerts::create_text(
+        self.add_alert(GaladrielAlerts::create_text(
             AlertTextType::ContributeAsDev,
             Local::now(),
             title,
@@ -509,7 +492,7 @@ impl ShellscapeApp {
             String::from("The final paragraph wraps it all up nicely. Don't forget to smile: \u{1F642}, \u{1F60A}, \u{1F60D}.")
         ];
 
-        self.add_alert(ShellscapeAlerts::create_text(
+        self.add_alert(GaladrielAlerts::create_text(
             AlertTextType::AboutAuthor,
             Local::now(),
             title,
@@ -537,6 +520,8 @@ fn random_subtitle_message() -> String {
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync;
+
     use crate::{configatron::Configatron, shellscape::app::ShellscapeApp};
 
     fn get_configatron() -> Configatron {
@@ -554,7 +539,8 @@ mod tests {
     fn test_shellscape_app_new() {
         let mock_config = get_configatron();
 
-        let app = ShellscapeApp::new(mock_config, "1.0.0").unwrap();
+        let (sender, _) = sync::broadcast::channel(0);
+        let app = ShellscapeApp::new(mock_config, "1.0.0", sender).unwrap();
 
         assert_eq!(app.metadata.title, "Galadriel CSS");
         assert_eq!(app.metadata.author, "Patrick Gunnar");
@@ -569,7 +555,8 @@ mod tests {
     #[test]
     fn test_shellscape_app_tick() {
         let mock_config = get_configatron();
-        let app = ShellscapeApp::new(mock_config, "1.0.0").unwrap();
+        let (sender, _) = sync::broadcast::channel(0);
+        let app = ShellscapeApp::new(mock_config, "1.0.0", sender).unwrap();
 
         app.tick();
     }
@@ -578,7 +565,8 @@ mod tests {
     fn test_shellscape_app_reset_configs_state() {
         let mock_config = get_configatron();
         let new_config = get_configatron();
-        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0").unwrap();
+        let (sender, _) = sync::broadcast::channel(0);
+        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0", sender).unwrap();
 
         // Check initial configuration
         assert_eq!(app.configs, mock_config);

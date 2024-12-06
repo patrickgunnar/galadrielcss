@@ -2,13 +2,13 @@ use chrono::Local;
 use futures::future::join_all;
 use indexmap::IndexMap;
 use nenyr::types::class::NenyrStyleClass;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::broadcast, task::JoinHandle};
 
 use crate::{
     asts::STYLITRON,
     crealion::utils::{camelify::camelify, pascalify::pascalify},
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     types::Stylitron,
     utils::generates_node_styles::generates_node_styles,
 };
@@ -280,15 +280,15 @@ impl Crealion {
     /// Processes style patterns for a class, generating and resolving properties and values
     /// while tracking utility class names for further processing.
     fn process_patterns(
-        class_name: String,                   // Name of the class being processed.
-        is_important: bool,                   // Whether the class is marked as important.
-        context_name: String,                 // Name of the context to which the class belongs.
-        breakpoint: Option<String>,           // Breakpoint value, if applicable.
-        breakpoint_name: Option<String>,      // Name of the breakpoint, if applicable.
-        inherited_contexts: Vec<String>,      // Contexts inherited by the current context.
+        class_name: String,                         // Name of the class being processed.
+        is_important: bool,                         // Whether the class is marked as important.
+        context_name: String, // Name of the context to which the class belongs.
+        breakpoint: Option<String>, // Breakpoint value, if applicable.
+        breakpoint_name: Option<String>, // Name of the breakpoint, if applicable.
+        inherited_contexts: Vec<String>, // Contexts inherited by the current context.
         transformed_context_name: String, // Transformed name of the current context, to be used in alerts.
         tracking_cls_names: &mut Vec<String>, // Vector to track generated utility class names.
-        sender: mpsc::UnboundedSender<ShellscapeAlerts>, // Channel to send warnings and alerts.
+        sender: broadcast::Sender<GaladrielAlerts>, // Channel to send warnings and alerts.
         styles_map: IndexMap<String, IndexMap<String, String>>, // Map of patterns and their properties.
     ) {
         tracing::debug!(
@@ -328,9 +328,9 @@ impl Crealion {
     /// Resolves a single property of a style pattern, checking for aliases and raising warnings
     /// if the alias cannot be resolved.
     fn resolve_property(
-        property: &str,                                  // The property to resolve.
-        value: &str,                                     // Value associated with the property.
-        class_name: &str,                                // Name of the class being processed.
+        property: &str,                             // The property to resolve.
+        value: &str,                                // Value associated with the property.
+        class_name: &str,                           // Name of the class being processed.
         pattern_name: &str, // Name of the pattern to which the property belongs.
         is_important: bool, // Whether the class is marked as important.
         context_name: &str, // Name of the context to which the class belongs.
@@ -339,7 +339,7 @@ impl Crealion {
         inherited_contexts: &Vec<String>, // Contexts inherited by the current context.
         transformed_context_name: &str, // Transformed name of the current context.
         tracking_cls_names: &mut Vec<String>, // Vector to track generated utility class names.
-        sender: mpsc::UnboundedSender<ShellscapeAlerts>, // Channel to send warnings and alerts.
+        sender: broadcast::Sender<GaladrielAlerts>, // Channel to send warnings and alerts.
     ) {
         // Attempt to resolve the property alias using inherited contexts.
         match resolve_alias_identifier(property, inherited_contexts) {
@@ -395,10 +395,10 @@ impl Crealion {
     /// Resolves the value of a property, checking for variables and generating the utility class name
     /// if successful, or raising warnings if unresolved.
     fn resolve_value(
-        resolved_property: &str,                         // Resolved property name.
-        property: &str,                                  // Original property name.
-        value: &str,                                     // Value associated with the property.
-        class_name: &str,                                // Name of the class being processed.
+        resolved_property: &str,                    // Resolved property name.
+        property: &str,                             // Original property name.
+        value: &str,                                // Value associated with the property.
+        class_name: &str,                           // Name of the class being processed.
         pattern_name: &str, // Name of the pattern to which the property belongs.
         is_important: bool, // Whether the class is marked as important.
         context_name: &str, // Name of the context to which the class belongs.
@@ -407,7 +407,7 @@ impl Crealion {
         inherited_contexts: &Vec<String>, // Contexts inherited by the current context.
         transformed_context_name: &str, // Transformed name of the current context, to be used in alerts.
         tracking_cls_names: &mut Vec<String>, // Vector to track generated utility class names.
-        sender: mpsc::UnboundedSender<ShellscapeAlerts>, // Channel to send warnings and alerts.
+        sender: broadcast::Sender<GaladrielAlerts>, // Channel to send warnings and alerts.
     ) {
         // Resolve variable values using the provided string and inherited contexts.
         match resolve_variable_from_str(value.to_owned(), true, inherited_contexts) {
@@ -475,7 +475,7 @@ impl Crealion {
         breakpoint: &Option<String>,
         breakpoint_name: &Option<String>,
         tracking_cls_names: &mut Vec<String>,
-        sender: mpsc::UnboundedSender<ShellscapeAlerts>,
+        sender: broadcast::Sender<GaladrielAlerts>,
     ) {
         // Trim specific suffixes from the pattern name to normalize it.
         let pattern_name = pattern_name.trim_end_matches("stylesheet");
@@ -538,7 +538,7 @@ impl Crealion {
         is_important: bool,
         context_name: &str,
         breakpoint: &Option<String>,
-        sender: mpsc::UnboundedSender<ShellscapeAlerts>,
+        sender: broadcast::Sender<GaladrielAlerts>,
     ) {
         // Determine which node in the Stylitron AST to access.
         let stylitron_node_name = match breakpoint {
@@ -568,7 +568,7 @@ impl Crealion {
                 tracing::error!("Critical error raised: {:?}", error);
 
                 // Create a notification to report the error.
-                let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                 // Attempt to send the notification and log any failures.
                 if let Err(err) = sender.send(notification) {
@@ -675,8 +675,8 @@ impl Crealion {
     /// # Parameters
     /// - `message`: A string slice containing the warning message to be displayed.
     /// - `sender`: An unbounded sender used to send the warning notification.
-    fn raise_class_warning(message: &str, sender: mpsc::UnboundedSender<ShellscapeAlerts>) {
-        let notification = ShellscapeAlerts::create_warning(Local::now(), message);
+    fn raise_class_warning(message: &str, sender: broadcast::Sender<GaladrielAlerts>) {
+        let notification = GaladrielAlerts::create_warning(Local::now(), message);
 
         // Attempt to send the warning notification.
         if let Err(err) = sender.send(notification) {
@@ -697,7 +697,7 @@ impl Crealion {
             ErrorAction::Notify,
         );
 
-        let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+        let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
         if let Err(err) = sender.send(notification) {
             tracing::error!("Failed to send warning notification: {:?}", err);
@@ -709,7 +709,7 @@ impl Crealion {
 mod classes_tests {
     use indexmap::IndexMap;
     use nenyr::types::{ast::NenyrAst, central::CentralContext, class::NenyrStyleClass};
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{
         asts::{CLASSINATOR, STYLITRON},
@@ -781,7 +781,7 @@ mod classes_tests {
 
         mock_breakpoints();
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -920,7 +920,7 @@ mod classes_tests {
 
         mock_breakpoints();
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,

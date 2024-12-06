@@ -501,6 +501,7 @@ pub enum ErrorKind {
     ServerPortRemovalFailed,
     ServerLocalAddrFetchFailed,
     NotificationSendError,
+    NotificationReceiveError,
     ServerSyncAcceptFailed,
     ObserverEventReceiveFailed,
     AsyncDebouncerCreationFailed,

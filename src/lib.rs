@@ -1,26 +1,20 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use baraddur::BaraddurObserver;
+use baraddur::Baraddur;
 use chrono::{DateTime, Local};
 use configatron::{Configatron, ConfigurationJson};
 use error::{ErrorAction, ErrorKind, GaladrielError};
-use events::GaladrielEvents;
-use formera::Formera;
+use events::{GaladrielAlerts, GaladrielEvents};
 use ignore::overrides;
 use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
-use nenyr::NenyrParser;
-use shellscape::{
-    alerts::ShellscapeAlerts, app::ShellscapeApp, commands::ShellscapeCommands, Shellscape,
-};
+use palantir::Palantir;
+use shellscape::{app::ShellscapeApp, commands::ShellscapeCommands, Shellscape};
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
     net::TcpListener,
-    sync::{
-        mpsc::{self, UnboundedSender},
-        RwLock,
-    },
+    sync::{broadcast, RwLock},
 };
 use tracing::Level;
 use tracing_appender::rolling;
@@ -37,6 +31,7 @@ mod gatekeeper;
 mod intaker;
 mod kickstartor;
 mod lothlorien;
+mod palantir;
 mod shellscape;
 mod types;
 mod utils;
@@ -151,14 +146,27 @@ impl GaladrielRuntime {
     }
 
     async fn development_runtime(&mut self) -> GaladrielResult<()> {
-        let mut nenyr_parser = NenyrParser::new();
-        let (alerts_sender, mut alerts_receiver) = mpsc::unbounded_channel::<ShellscapeAlerts>();
+        let palantir_alerts = Palantir::new();
+        let palantir_sender = palantir_alerts.get_palantir_sender();
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher();
+
+        // Initialize the Barad-dûr file system observer.
+        let working_dir = self.working_dir.clone();
+        let matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
+        let atomically_matcher = Arc::new(RwLock::new(matcher));
+
+        let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
+        let (mut debouncer, debouncer_sender) =
+            baraddur_observer.async_debouncer(Arc::clone(&atomically_matcher))?;
+        let _start_observation = baraddur_observer.watch(&mut debouncer, debouncer_sender.clone());
+        // ============================================================================
 
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
         let mut interface = shellscape.create_interface()?; // Terminal interface setup
-        let mut shellscape_app = shellscape.create_app(self.configatron.clone())?; // Application/state setup for Shellscape
+        let mut shellscape_app =
+            shellscape.create_app(self.configatron.clone(), palantir_sender.clone())?; // Application/state setup for Shellscape
 
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
@@ -166,12 +174,6 @@ impl GaladrielRuntime {
         let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
         let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
-
-        // Initialize the Barad-dûr file system observer.
-        let mut observer = BaraddurObserver::new(self.working_dir.clone(), 250);
-        let matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
-        let atomically_matcher = Arc::new(RwLock::new(matcher));
-        let _observer_handler = observer.start(Arc::clone(&atomically_matcher)); // Start observing file changes
 
         // Set the running port.
         shellscape_app.reset_server_running_on_port(running_on_port);
@@ -196,31 +198,32 @@ impl GaladrielRuntime {
             // TODO: Implement comprehensive error handling for potential issues here, designing a robust mechanism to manage different error types effectively.
 
             tokio::select! {
-                alerts_res = alerts_receiver.recv() => {
-                    self.match_alerts_events(alerts_res, &mut shellscape_app);
-                }
                 // Handle events from the Lothlórien pipeline.
                 pipeline_res = pipeline.next() => {
                     match pipeline_res {
                         // Handle error events from the Lothlórien pipeline and notify the application.
                         Ok(GaladrielEvents::Error(err)) => {
-                            shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
+                            let notification = GaladrielAlerts::create_galadriel_error(
                                 Local::now(),
                                 err,
-                            ));
+                            );
+
+                            palantir_alerts.send_alert(notification);
 
                             // TODO: handle the error.
                         }
                         // Handle notification event from the Lothlórien pipeline.
                         Ok(GaladrielEvents::Notify(notification)) => {
-                            shellscape_app.add_alert(notification);
+                            palantir_alerts.send_alert(notification);
                         }
                         // Handle errors from the Lothlórien pipeline and notify the application.
                         Err(err) => {
-                            shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
+                            let notification = GaladrielAlerts::create_galadriel_error(
                                 Local::now(),
                                 err,
-                            ));
+                            );
+
+                            palantir_alerts.send_alert(notification);
 
                             // TODO: handle the error.
                         }
@@ -228,30 +231,28 @@ impl GaladrielRuntime {
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
-                baraddur_res = observer.next() => {
+                baraddur_res = baraddur_observer.next() => {
                     match baraddur_res {
                         // Handle asynchronous debouncer errors from the observer and notify the application.
                         Ok(GaladrielEvents::Error(err)) => {
-                            shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
+                            palantir_alerts.send_alert(GaladrielAlerts::create_galadriel_error(
                                 Local::now(),
                                 err,
                             ));
 
                             // TODO: handle the error.
                         }
-                        // Handle other events from the Barad-dûr observer by matching them to corresponding actions.
                         Ok(event) => {
                             self.match_observer_events(
                                 event,
                                 &mut shellscape_app,
                                 Arc::clone(&atomically_matcher),
-                                alerts_sender.clone(),
-                                &mut nenyr_parser,
+                                palantir_sender.clone()
                             ).await;
                         }
                         // Handle errors from the Barad-dûr observer and notify the application.
                         Err(err) => {
-                            shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
+                            palantir_alerts.send_alert(GaladrielAlerts::create_galadriel_error(
                                 Local::now(),
                                 err,
                             ));
@@ -287,21 +288,21 @@ impl GaladrielRuntime {
                                     self.configatron.toggle_reset_styles();
 
                                     if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
                                 ShellscapeCommands::ToggleMinifiedStyles => {
                                     self.configatron.toggle_minified_styles();
 
                                     if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
                                 ShellscapeCommands::ToggleAutoNaming => {
                                     self.configatron.toggle_auto_naming();
 
                                     if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(Local::now(), err));
+                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
                                 ShellscapeCommands::ClearAlertsTable => {
@@ -387,19 +388,6 @@ impl GaladrielRuntime {
         Ok(())
     }
 
-    fn match_alerts_events(
-        &mut self,
-        event: Option<ShellscapeAlerts>,
-        shellscape_app: &mut ShellscapeApp,
-    ) {
-        match event {
-            Some(alert) => {
-                shellscape_app.add_alert(alert);
-            }
-            None => {}
-        }
-    }
-
     /// Asynchronously handles incoming observer events and updates the Shellscape app
     /// based on the received `GaladrielEvents`.
     ///
@@ -412,56 +400,9 @@ impl GaladrielRuntime {
         event: GaladrielEvents,
         shellscape_app: &mut ShellscapeApp,
         atomically_matcher: Arc<RwLock<overrides::Override>>,
-        sender: UnboundedSender<ShellscapeAlerts>,
-        nenyr_parser: &mut NenyrParser,
+        sender: broadcast::Sender<GaladrielAlerts>,
     ) {
         match event {
-            // If a notification event is received, add it directly to the Shellscape app.
-            GaladrielEvents::Notify(notification) => {
-                shellscape_app.add_alert(notification);
-            }
-            GaladrielEvents::Parse(path) => {
-                let start_time = Local::now();
-                let stringified_path = path.to_string_lossy().to_string();
-                let notification = ShellscapeAlerts::create_information(
-                    start_time,
-                    &format!("Initiating parsing of: {:?}", stringified_path),
-                );
-
-                shellscape_app.add_alert(notification);
-
-                let mut formera = Formera::new(path, self.configatron.get_auto_naming(), sender);
-
-                match formera.start(nenyr_parser).await {
-                    Ok(()) => {
-                        let ending_time = Local::now();
-                        let duration = ending_time - start_time;
-                        let notification = ShellscapeAlerts::create_success(
-                            start_time,
-                            ending_time,
-                            duration,
-                            &format!("Successfully parsed Nenyr file: {:?}", stringified_path),
-                        );
-
-                        shellscape_app.add_alert(notification);
-
-                        //println!("{:?}\n", *STYLITRON);
-                        //println!("{:?}", *CLASSINATOR);
-                    }
-                    Err(GaladrielError::NenyrError { start_time, error }) => {
-                        shellscape_app.add_alert(ShellscapeAlerts::create_nenyr_error(
-                            start_time.to_owned(),
-                            error.to_owned(),
-                        ));
-                    }
-                    Err(err) => {
-                        shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(
-                            Local::now(),
-                            err.to_owned(),
-                        ));
-                    }
-                }
-            }
             // Handle reloading of Galadriel configuration when requested by the event.
             GaladrielEvents::ReloadGaladrielConfigs => {
                 let start_time = Local::now();
@@ -479,7 +420,7 @@ impl GaladrielRuntime {
 
                         let ending_time = Local::now();
                         let duration = ending_time - start_time;
-                        let notification = ShellscapeAlerts::create_success(
+                        let notification = GaladrielAlerts::create_success(
                             start_time,
                             ending_time,
                             duration,
@@ -488,7 +429,10 @@ impl GaladrielRuntime {
 
                         // Update the Shellscape app's state with the new configuration and add a success notification.
                         shellscape_app.reset_configs_state(self.configatron.clone());
-                        shellscape_app.add_alert(notification);
+
+                        if let Err(err) = sender.send(notification) {
+                            tracing::error!("{:?}", err);
+                        }
                     }
                     // Log an error if configuration loading fails, and notify the Shellscape app.
                     Err(err) => {
@@ -497,8 +441,11 @@ impl GaladrielRuntime {
                             err
                         );
 
-                        shellscape_app
-                            .add_alert(ShellscapeAlerts::create_galadriel_error(start_time, err));
+                        let notification = GaladrielAlerts::create_galadriel_error(start_time, err);
+
+                        if let Err(err) = sender.send(notification) {
+                            tracing::error!("{:?}", err);
+                        }
                     }
                 }
             }
@@ -529,7 +476,7 @@ impl GaladrielRuntime {
                 let ending_time = Local::now();
                 let duration = ending_time - start_time;
 
-                ShellscapeAlerts::create_success(start_time, ending_time, duration, "");
+                GaladrielAlerts::create_success(start_time, ending_time, duration, "");
             }
             Err(err) => {
                 tracing::error!(
@@ -537,7 +484,7 @@ impl GaladrielRuntime {
                     err
                 );
 
-                shellscape_app.add_alert(ShellscapeAlerts::create_galadriel_error(start_time, err));
+                shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(start_time, err));
             }
         }
     }

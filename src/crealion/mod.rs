@@ -4,11 +4,11 @@ use indexmap::IndexMap;
 use nenyr::types::{
     ast::NenyrAst, central::CentralContext, layout::LayoutContext, module::ModuleContext,
 };
-use tokio::{sync::mpsc::UnboundedSender, task::JoinError};
+use tokio::{sync::broadcast, task::JoinError};
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     GaladrielResult,
 };
 
@@ -38,7 +38,7 @@ pub enum CrealionContextType {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Crealion {
-    sender: UnboundedSender<ShellscapeAlerts>,
+    sender: broadcast::Sender<GaladrielAlerts>,
     central_context_identifier: String,
     parsed_ast: NenyrAst,
     path: String,
@@ -48,11 +48,11 @@ impl Crealion {
     /// Creates a new instance of `Crealion` with the given parameters.
     ///
     /// # Parameters
-    /// - `sender`: A channel for sending `ShellscapeAlerts`.
+    /// - `sender`: A channel for sending `GaladrielAlerts`.
     /// - `parsed_ast`: The parsed Abstract Syntax Tree (AST) of type `NenyrAst`.
     /// - `path`: The path related to the AST.
     pub fn new(
-        sender: UnboundedSender<ShellscapeAlerts>,
+        sender: broadcast::Sender<GaladrielAlerts>,
         parsed_ast: NenyrAst,
         path: String,
     ) -> Self {
@@ -484,7 +484,7 @@ impl Crealion {
     /// Handles errors resulting from joining asynchronous tasks.
     ///
     /// This function raises a `GaladrielError` for a task failure, creates a
-    /// notification using `ShellscapeAlerts`, and attempts to send it via the
+    /// notification using `GaladrielAlerts`, and attempts to send it via the
     /// internal sender.
     ///
     /// # Arguments
@@ -498,7 +498,7 @@ impl Crealion {
             ErrorAction::Notify,
         );
 
-        let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+        let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
         if let Err(err) = sender.send(notification) {
             tracing::error!(
@@ -514,7 +514,7 @@ impl Crealion {
 mod tests {
     use indexmap::IndexMap;
     use nenyr::NenyrParser;
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{
         asts::STYLITRON, types::Stylitron, utils::generates_node_styles::generates_node_styles,
@@ -566,7 +566,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = mpsc::unbounded_channel();
+                        let (sender, _) = broadcast::channel(0);
 
                         let mut crealion = Crealion::new(
                             sender,
@@ -638,7 +638,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = mpsc::unbounded_channel();
+                        let (sender, _) = broadcast::channel(0);
 
                         let mut crealion = Crealion::new(
                             sender,
@@ -698,7 +698,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = mpsc::unbounded_channel();
+                        let (sender, _) = broadcast::channel(0);
 
                         let mut crealion = Crealion::new(
                             sender,

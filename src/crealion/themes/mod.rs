@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 use crate::{
     asts::STYLITRON,
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     types::Stylitron,
 };
 
@@ -58,8 +58,7 @@ impl Crealion {
                     tracing::error!("Critical error encountered: {:?}", error);
 
                     // Generate an error notification and attempt to send it via the sender.
-                    let notification =
-                        ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+                    let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                     if let Err(err) = sender.send(notification) {
                         tracing::error!("Failed to send notification: {}", err);
@@ -138,7 +137,7 @@ mod tests {
     use nenyr::types::{
         ast::NenyrAst, central::CentralContext, themes::NenyrThemes, variables::NenyrVariables,
     };
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{
         asts::STYLITRON,
@@ -146,7 +145,7 @@ mod tests {
             utils::generates_variable_or_animation_name::generates_variable_or_animation_name,
             Crealion,
         },
-        shellscape::alerts::ShellscapeAlerts,
+        events::GaladrielAlerts,
         types::Stylitron,
     };
 
@@ -196,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_themes_success() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -246,7 +245,7 @@ mod tests {
     async fn test_apply_themes_to_existing_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Pre-populate the STYLITRON AST with existing data.
         let initial_data = IndexMap::from([(
@@ -310,7 +309,7 @@ mod tests {
     async fn test_apply_themes_to_new_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Ensure no existing context in the STYLITRON AST.
         let initial_data = IndexMap::new();
@@ -364,7 +363,7 @@ mod tests {
     async fn test_apply_themes_with_empty_themes_data() {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -414,7 +413,7 @@ mod tests {
     async fn test_apply_themes_no_themes_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = broadcast::channel(0);
 
         // Simulate an empty STYLITRON AST to trigger an error.
         STYLITRON.remove("themes");
@@ -443,8 +442,8 @@ mod tests {
             .await;
 
         // Verify that an error notification was sent.
-        if let Some(notification) = receiver.recv().await {
-            if let ShellscapeAlerts::GaladrielError {
+        if let Ok(notification) = receiver.recv().await {
+            if let GaladrielAlerts::GaladrielError {
                 start_time: _,
                 error,
             } = notification

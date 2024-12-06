@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use chrono::Local;
 use nenyr::NenyrParser;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::broadcast;
 
 use crate::{
-    crealion::Crealion, error::GaladrielError, shellscape::alerts::ShellscapeAlerts,
+    crealion::Crealion, error::GaladrielError, events::GaladrielAlerts,
     utils::resilient_reader::resilient_reader, GaladrielResult,
 };
 
@@ -13,14 +13,14 @@ use crate::{
 pub struct Formera {
     path: PathBuf,
     auto_naming: bool,
-    sender: UnboundedSender<ShellscapeAlerts>,
+    sender: broadcast::Sender<GaladrielAlerts>,
 }
 
 impl Formera {
     pub fn new(
         path: PathBuf,
         auto_naming: bool,
-        sender: UnboundedSender<ShellscapeAlerts>,
+        sender: broadcast::Sender<GaladrielAlerts>,
     ) -> Self {
         Self {
             path,
@@ -46,7 +46,7 @@ impl Formera {
         match crealion.create().await {
             Ok(None) => {}
             Ok(Some(layout_relation)) => {
-                let notification = ShellscapeAlerts::create_information(
+                let notification = GaladrielAlerts::create_information(
                     Local::now(),
                     &format!(
                         "The current layout context contains these relations: {:?}",
@@ -59,7 +59,7 @@ impl Formera {
                 }
             }
             Err(err) => {
-                let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), err);
+                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), err);
 
                 if let Err(err) = sender.send(notification) {
                     tracing::error!("{:?}", err);

@@ -19,8 +19,7 @@ use tungstenite::Message;
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
-    events::GaladrielEvents,
-    shellscape::alerts::ShellscapeAlerts,
+    events::{GaladrielAlerts, GaladrielEvents},
     GaladrielResult,
 };
 
@@ -126,7 +125,7 @@ impl LothlorienPipeline {
         let ending_time = Local::now();
         let duration = ending_time - start_time;
 
-        let notification = ShellscapeAlerts::create_success(
+        let notification = GaladrielAlerts::create_success(
             start_time,
             ending_time,
             duration,
@@ -171,7 +170,7 @@ impl LothlorienPipeline {
                                     Ok(Ok(_)) => {
                                         info!("Connection handled successfully.");
 
-                                        let notification = ShellscapeAlerts::create_information(
+                                        let notification = GaladrielAlerts::create_information(
                                             Local::now(),
                                             "Client has successfully disconnected from the Galadriel CSS server. No further events will be sent to this client."
                                         );
@@ -394,7 +393,7 @@ impl LothlorienPipeline {
                 )
             })?;
 
-        let notification = ShellscapeAlerts::create_information(
+        let notification = GaladrielAlerts::create_information(
             Local::now(),
             "A new client has successfully connected to the Galadriel server and is now ready to request and receive events."
         );
@@ -435,7 +434,7 @@ impl LothlorienPipeline {
                                     err
                                 );
 
-                                let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), err);
+                                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), err);
 
                                 if let Err(err) = pipeline_sender.send(GaladrielEvents::Notify(notification)) {
                                     error!(

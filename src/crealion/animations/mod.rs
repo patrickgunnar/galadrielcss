@@ -6,7 +6,7 @@ use crate::{
     asts::STYLITRON,
     crealion::{processors::variables::VariablesOption, utils::camelify::camelify},
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     types::Stylitron,
 };
 
@@ -113,7 +113,7 @@ impl Crealion {
                         IndexMap::new(),
                     );
 
-                    let warning = ShellscapeAlerts::create_warning(
+                    let warning = GaladrielAlerts::create_warning(
                         Local::now(),
                         &format!(
                             "The animation `{}` within the context `{}` has been detected as empty.",
@@ -466,7 +466,7 @@ impl Crealion {
     /// - `message` - The warning message to be raised.
     fn raise_warning(&self, message: &str) {
         let sender = self.sender.clone();
-        let notification = ShellscapeAlerts::create_warning(Local::now(), message);
+        let notification = GaladrielAlerts::create_warning(Local::now(), message);
 
         // Attempt to send the warning notification.
         if let Err(err) = sender.send(notification) {
@@ -516,7 +516,7 @@ impl Crealion {
                 tracing::error!("Critical error raised: {:?}", error);
 
                 // Create a notification to report the error.
-                let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                 // Attempt to send the notification and log any failures.
                 if let Err(err) = sender.send(notification) {
@@ -575,7 +575,7 @@ mod tests {
         ast::NenyrAst,
         central::CentralContext,
     };
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{
         asts::STYLITRON,
@@ -583,7 +583,7 @@ mod tests {
             utils::generates_variable_or_animation_name::generates_variable_or_animation_name,
             Crealion,
         },
-        shellscape::alerts::ShellscapeAlerts,
+        events::GaladrielAlerts,
         types::Stylitron,
     };
 
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_success() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_to_existing_context() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Pre-populate the STYLITRON AST with existing data.
         let initial_data = IndexMap::from([(
@@ -713,7 +713,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_to_new_context() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         // Ensure no existing context in the STYLITRON AST.
         let initial_data = IndexMap::new();
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_with_empty_animations_data() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -782,7 +782,7 @@ mod tests {
     async fn test_apply_animations_no_animations_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = broadcast::channel(0);
 
         // Simulate an empty STYLITRON AST to trigger an error.
         STYLITRON.remove("animations");
@@ -797,8 +797,8 @@ mod tests {
         let _ = crealion.process_animations("noAnimationsSection", &inherits, mock_animations());
 
         // Verify that an error notification was sent.
-        if let Some(notification) = receiver.recv().await {
-            if let ShellscapeAlerts::GaladrielError {
+        if let Ok(notification) = receiver.recv().await {
+            if let GaladrielAlerts::GaladrielError {
                 start_time: _,
                 error,
             } = notification

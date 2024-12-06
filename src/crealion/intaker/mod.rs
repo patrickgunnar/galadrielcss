@@ -80,13 +80,13 @@ impl Crealion {
 #[cfg(test)]
 mod tests {
     use nenyr::types::{ast::NenyrAst, central::CentralContext};
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{asts::INTAKER, crealion::Crealion};
 
     #[test]
     fn context_name_is_valid() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -109,7 +109,7 @@ mod tests {
             "newContextName".to_string(),
         );
 
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,

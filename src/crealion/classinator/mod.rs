@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use crate::{
     asts::CLASSINATOR,
     error::{ErrorAction, ErrorKind, GaladrielError},
-    shellscape::alerts::ShellscapeAlerts,
+    events::GaladrielAlerts,
     types::Classinator,
 };
 
@@ -67,7 +67,7 @@ impl Crealion {
                 tracing::error!("Critical error raised: {:?}", error);
 
                 // Create a notification to report the error.
-                let notification = ShellscapeAlerts::create_galadriel_error(Local::now(), error);
+                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                 // Attempt to send the notification and log any failures.
                 if let Err(err) = sender.send(notification) {
@@ -213,7 +213,7 @@ impl Crealion {
 #[cfg(test)]
 mod classinator_tests {
     use nenyr::types::{ast::NenyrAst, central::CentralContext};
-    use tokio::sync::mpsc;
+    use tokio::sync::broadcast;
 
     use crate::{
         asts::CLASSINATOR,
@@ -223,7 +223,7 @@ mod classinator_tests {
 
     #[test]
     fn central_map_should_exists_in_ast() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -268,7 +268,7 @@ mod classinator_tests {
 
     #[test]
     fn layout_map_should_exists_in_ast() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
@@ -317,7 +317,7 @@ mod classinator_tests {
 
     #[test]
     fn module_map_should_exists_in_ast() {
-        let (sender, _) = mpsc::unbounded_channel();
+        let (sender, _) = broadcast::channel(0);
 
         let crealion = Crealion::new(
             sender,
