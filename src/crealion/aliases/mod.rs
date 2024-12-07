@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_aliases_success() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -148,7 +148,7 @@ mod tests {
     async fn test_apply_aliases_to_existing_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         // Pre-populate the STYLITRON AST with existing data.
         let initial_data = IndexMap::from([(
@@ -188,7 +188,7 @@ mod tests {
     async fn test_apply_aliases_to_new_context() {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         // Ensure no existing context in the STYLITRON AST.
         let initial_data = IndexMap::new();
@@ -224,7 +224,7 @@ mod tests {
     async fn test_apply_aliases_with_empty_aliases_data() {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -257,7 +257,7 @@ mod tests {
     async fn test_apply_aliases_no_aliases_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 
-        let (sender, mut receiver) = broadcast::channel(0);
+        let (sender, mut receiver) = broadcast::channel(10);
 
         // Simulate an empty STYLITRON AST to trigger an error.
         STYLITRON.remove("aliases");

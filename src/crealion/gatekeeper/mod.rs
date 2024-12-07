@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn registering_context_with_success() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn retrieving_context_with_success() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,

@@ -223,7 +223,7 @@ mod classinator_tests {
 
     #[test]
     fn central_map_should_exists_in_ast() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -268,7 +268,7 @@ mod classinator_tests {
 
     #[test]
     fn layout_map_should_exists_in_ast() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -317,7 +317,7 @@ mod classinator_tests {
 
     #[test]
     fn module_map_should_exists_in_ast() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,

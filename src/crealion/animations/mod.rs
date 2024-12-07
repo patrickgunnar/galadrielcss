@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_success() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_to_existing_context() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         // Pre-populate the STYLITRON AST with existing data.
         let initial_data = IndexMap::from([(
@@ -713,7 +713,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_to_new_context() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         // Ensure no existing context in the STYLITRON AST.
         let initial_data = IndexMap::new();
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_apply_animations_with_empty_animations_data() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -782,7 +782,7 @@ mod tests {
     async fn test_apply_animations_no_animations_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 
-        let (sender, mut receiver) = broadcast::channel(0);
+        let (sender, mut receiver) = broadcast::channel(10);
 
         // Simulate an empty STYLITRON AST to trigger an error.
         STYLITRON.remove("animations");

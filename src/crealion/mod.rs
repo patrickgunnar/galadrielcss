@@ -566,7 +566,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = broadcast::channel(0);
+                        let (sender, _) = broadcast::channel(10);
 
                         let mut crealion = Crealion::new(
                             sender,
@@ -638,7 +638,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = broadcast::channel(0);
+                        let (sender, _) = broadcast::channel(10);
 
                         let mut crealion = Crealion::new(
                             sender,
@@ -698,7 +698,7 @@ mod tests {
                     Ok(parsed_ast) => {
                         reset_stylitron();
 
-                        let (sender, _) = broadcast::channel(0);
+                        let (sender, _) = broadcast::channel(10);
 
                         let mut crealion = Crealion::new(
                             sender,

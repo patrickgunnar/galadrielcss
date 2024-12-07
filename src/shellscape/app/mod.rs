@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_shellscape_app_new() {
-        let (sender, _) = sync::broadcast::channel(0);
+        let (sender, _) = sync::broadcast::channel(10);
         let app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         assert_eq!(app.metadata.title, "Galadriel CSS");
@@ -515,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_shellscape_app_tick() {
-        let (sender, _) = sync::broadcast::channel(0);
+        let (sender, _) = sync::broadcast::channel(10);
         let app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         app.tick();

@@ -114,13 +114,13 @@ impl GaladrielRuntime {
 
         // Exclude matcher for file system monitoring
         let working_dir = self.working_dir.clone();
-        let matcher = construct_exclude_matcher(&working_dir)?;
-        let atomically_matcher = Arc::new(RwLock::new(matcher));
+        let matcher = construct_exclude_matcher(&working_dir)?; // Create an exclude matcher based on the working directory.
+        let atomically_matcher = Arc::new(RwLock::new(matcher)); // Wrap the matcher in an Arc and RwLock for thread-safe shared ownership and mutable access.
 
         // Initialize the Palantir alerts system.
         let palantir_alerts = Palantir::new();
-        let palantir_sender = palantir_alerts.get_palantir_sender();
-        let _start_alert_watcher = palantir_alerts.start_alert_watcher();
+        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher(); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
 
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
@@ -137,17 +137,14 @@ impl GaladrielRuntime {
 
         // Initialize the Barad-dûr file system observer.
         let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
-        let matcher = Arc::clone(&atomically_matcher);
-        let (mut deb, deb_tx) = baraddur_observer.async_debouncer(matcher)?;
-        let matcher = Arc::clone(&atomically_matcher);
-        let _start_observation = baraddur_observer.watch(matcher, &mut deb, deb_tx.clone());
+        let matcher = Arc::clone(&atomically_matcher); // Clone the Arc reference to atomically_matcher for sharing it across threads safely.
+        let (mut deb, deb_tx) = baraddur_observer.async_debouncer(matcher)?; // Call the async_debouncer method on the baraddur_observer instance, passing the cloned matcher. This returns a debouncer object and a sender (deb_tx).
+        let matcher = Arc::clone(&atomically_matcher); // Clone the Arc reference to atomically_matcher for sharing it across threads safely.
+        let _start_observation = baraddur_observer.watch(matcher, &mut deb, deb_tx.clone()); // Start observing with the baraddur_observer, using the matcher, the debouncer (mut deb), and the deb_tx sender for debouncing.
 
-        // Set the running port.
-        shellscape_app.reset_server_running_on_port(running_on_port);
-        // Register the pipeline's server port in temporary storage.
-        pipeline.register_server_port_in_temp(running_on_port)?;
-        // Start the Shellscape terminal interface rendering.
-        interface.invoke()?;
+        shellscape_app.reset_server_running_on_port(running_on_port); // Set the running port.
+        pipeline.register_server_port_in_temp(running_on_port)?; // Register the pipeline's server port in temporary storage.
+        interface.invoke()?; // Start the Shellscape terminal interface rendering.
 
         // Transition to development runtime.
         self.development_runtime(

@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn context_name_is_valid() {
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -109,7 +109,7 @@ mod tests {
             "newContextName".to_string(),
         );
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,

@@ -781,7 +781,7 @@ mod classes_tests {
 
         mock_breakpoints();
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
@@ -920,7 +920,7 @@ mod classes_tests {
 
         mock_breakpoints();
 
-        let (sender, _) = broadcast::channel(0);
+        let (sender, _) = broadcast::channel(10);
 
         let crealion = Crealion::new(
             sender,
