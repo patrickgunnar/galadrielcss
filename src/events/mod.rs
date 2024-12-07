@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chrono::{DateTime, Local, TimeDelta};
 use nenyr::error::NenyrError;
 
@@ -9,8 +7,6 @@ use crate::error::GaladrielError;
 pub enum GaladrielEvents {
     Error(GaladrielError),
     Notify(GaladrielAlerts),
-    ReloadGaladrielConfigs,
-    Parse(PathBuf),
 }
 
 #[allow(dead_code)]

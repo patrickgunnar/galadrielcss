@@ -11,7 +11,6 @@ use tracing::{debug, info};
 
 use crate::{
     asts::PALANTIR_ALERTS,
-    configatron::Configatron,
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{AlertTextType, GaladrielAlerts},
     GaladrielResult,
@@ -26,7 +25,6 @@ use super::{area::ShellscapeArea, metadata::ShellscapeMetadata};
 pub struct ShellscapeApp {
     palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     pub metadata: ShellscapeMetadata,
-    pub configs: Configatron,
     pub server_running_on_port: u16,
 
     pub table_scroll_state: ScrollbarState,
@@ -64,7 +62,6 @@ impl ShellscapeApp {
     /// * The syntax set could not be loaded (`NenyrSyntaxIntegrationFailed`).
     /// * The `Nenyr` syntax could not be found in the syntax set (`NenyrSyntaxMissing`).
     pub fn new(
-        configs: Configatron,
         version: &str,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) -> GaladrielResult<Self> {
@@ -116,7 +113,6 @@ impl ShellscapeApp {
             table_scroll_len: 0,
             dock_scroll_len: 0,
             palantir_sender,
-            configs,
             metadata,
             syntax_set,
             theme_set,
@@ -197,20 +193,6 @@ impl ShellscapeApp {
         self.server_running_on_port = port;
     }
 
-    /// Resets the application configurations to the provided state.
-    ///
-    /// This method logs the old and new configurations for debugging purposes.
-    ///
-    /// # Arguments
-    /// * `configs` - The new configuration object (`Configatron`) to reset the state with.
-    pub fn reset_configs_state(&mut self, configs: Configatron) {
-        info!("Resetting Galadriel configurations in ShellscapeApp.");
-        debug!("Old configurations: {:?}", self.configs);
-        debug!("New configurations: {:?}", configs);
-
-        self.configs = configs;
-    }
-
     /// Resets the subtitle in the metadata.
     ///
     /// # Arguments
@@ -225,14 +207,6 @@ impl ShellscapeApp {
     /// Returns the port number (`u16`) on which the server is currently running.
     pub fn get_server_running_on_port(&self) -> u16 {
         self.server_running_on_port
-    }
-
-    /// Retrieves the current configuration of the application.
-    ///
-    /// # Returns
-    /// Returns the current `Configatron` instance containing the application's configurations.
-    pub fn get_configs(&self) -> Configatron {
-        self.configs.clone()
     }
 
     /// Returns the author of the application from the metadata.
@@ -522,25 +496,12 @@ fn random_subtitle_message() -> String {
 mod tests {
     use tokio::sync;
 
-    use crate::{configatron::Configatron, shellscape::app::ShellscapeApp};
-
-    fn get_configatron() -> Configatron {
-        Configatron::new(
-            vec![],
-            true,
-            true,
-            true,
-            "8080".to_string(),
-            "1.0.0".to_string(),
-        )
-    }
+    use crate::shellscape::app::ShellscapeApp;
 
     #[test]
     fn test_shellscape_app_new() {
-        let mock_config = get_configatron();
-
         let (sender, _) = sync::broadcast::channel(0);
-        let app = ShellscapeApp::new(mock_config, "1.0.0", sender).unwrap();
+        let app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         assert_eq!(app.metadata.title, "Galadriel CSS");
         assert_eq!(app.metadata.author, "Patrick Gunnar");
@@ -554,26 +515,9 @@ mod tests {
 
     #[test]
     fn test_shellscape_app_tick() {
-        let mock_config = get_configatron();
         let (sender, _) = sync::broadcast::channel(0);
-        let app = ShellscapeApp::new(mock_config, "1.0.0", sender).unwrap();
+        let app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         app.tick();
-    }
-
-    #[test]
-    fn test_shellscape_app_reset_configs_state() {
-        let mock_config = get_configatron();
-        let new_config = get_configatron();
-        let (sender, _) = sync::broadcast::channel(0);
-        let mut app = ShellscapeApp::new(mock_config.clone(), "1.0.0", sender).unwrap();
-
-        // Check initial configuration
-        assert_eq!(app.configs, mock_config);
-
-        // Reset the configuration
-        app.reset_configs_state(new_config.clone());
-
-        assert_eq!(app.configs, new_config);
     }
 }

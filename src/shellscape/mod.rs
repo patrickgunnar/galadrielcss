@@ -11,7 +11,6 @@ use tracing::{error, info};
 use ui::ShellscapeInterface;
 
 use crate::{
-    configatron::Configatron,
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::GaladrielAlerts,
     GaladrielResult,
@@ -22,7 +21,7 @@ mod area;
 pub mod commands;
 pub mod events;
 mod metadata;
-mod ui;
+pub mod ui;
 mod widgets;
 
 /// Represents a shell interface to communicate with the Galadriel CSS runtime.
@@ -96,12 +95,11 @@ impl Shellscape {
     /// A `ShellscapeApp` instance initialized with the provided configurations.
     pub fn create_app(
         &self,
-        configs: Configatron,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) -> GaladrielResult<ShellscapeApp> {
         info!("Creating Shellscape application instance with provided configurations.");
 
-        ShellscapeApp::new(configs, "1.0.0", palantir_sender)
+        ShellscapeApp::new("1.0.0", palantir_sender)
     }
 
     /// Creates and returns a Shellscape event handler with a specified tick rate.
@@ -172,9 +170,8 @@ impl Shellscape {
 #[cfg(test)]
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use tokio::sync;
 
-    use super::{Configatron, Shellscape, ShellscapeCommands, ShellscapeTerminalEvents};
+    use super::{Shellscape, ShellscapeCommands, ShellscapeTerminalEvents};
 
     #[tokio::test]
     async fn test_shellscape_new() {
@@ -186,23 +183,6 @@ mod tests {
         let received_event = shellscape.next().await;
 
         assert_eq!(format!("{:?}", received_event), "Ok(Tick)".to_string());
-    }
-
-    #[test]
-    fn test_create_app() {
-        let shellscape = Shellscape::new();
-        let configs = Configatron::new(
-            vec![],
-            true,
-            true,
-            true,
-            "8080".to_string(),
-            "1.0.0".to_string(),
-        );
-        let (sender, _) = sync::broadcast::channel(0);
-        let app = shellscape.create_app(configs.clone(), sender).unwrap();
-
-        assert_eq!(app.configs, configs);
     }
 
     #[tokio::test]

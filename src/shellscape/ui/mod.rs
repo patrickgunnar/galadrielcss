@@ -222,10 +222,7 @@ mod tests {
 
     use tokio::sync;
 
-    use crate::{
-        configatron::Configatron,
-        shellscape::{app::ShellscapeApp, ui::ShellscapeInterface, Shellscape},
-    };
+    use crate::shellscape::{app::ShellscapeApp, ui::ShellscapeInterface, Shellscape};
 
     #[ignore]
     #[test]
@@ -251,19 +248,7 @@ mod tests {
         let terminal = shellscape.get_terminal().unwrap();
         let mut interface = ShellscapeInterface::new(terminal);
         let (sender, _) = sync::broadcast::channel(0);
-        let mut app = ShellscapeApp::new(
-            Configatron::new(
-                vec![],
-                true,
-                true,
-                true,
-                "8080".to_string(),
-                "1.0.0".to_string(),
-            ),
-            "1.0.0",
-            sender,
-        )
-        .unwrap();
+        let mut app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         // Call render and check if it's successful
         let result = interface.render(&mut app);

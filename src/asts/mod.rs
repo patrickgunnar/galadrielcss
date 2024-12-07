@@ -3,12 +3,25 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 
 use crate::{
+    configatron::GaladrielConfig,
     events::GaladrielAlerts,
     types::{Classinator, Stylitron},
     utils::generates_node_styles::generates_node_styles,
 };
 
 lazy_static! {
+    pub static ref CONFIGATRON: DashMap<String, GaladrielConfig> = {
+        let map = DashMap::new();
+
+        map.insert("exclude".to_string(), GaladrielConfig::Exclude(vec![]));
+        map.insert("autoNaming".to_string(), GaladrielConfig::AutoNaming(true));
+        map.insert("resetStyles".to_string(), GaladrielConfig::ResetStyles(true));
+        map.insert("minifiedStyles".to_string(), GaladrielConfig::MinifiedStyles(true));
+        map.insert("port".to_string(), GaladrielConfig::Port("0".to_string()));
+
+        map
+    };
+
     pub static ref PALANTIR_ALERTS: DashMap<String, Vec<GaladrielAlerts>> = {
         let map = DashMap::new();
 

@@ -1,5 +1,18 @@
+use std::{path::PathBuf, sync::Arc};
+
+use chrono::Local;
+use ignore::overrides;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::json;
+use tokio::sync::RwLock;
 use tracing::info;
+
+use crate::{
+    asts::CONFIGATRON,
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    events::GaladrielAlerts,
+    GaladrielResult,
+};
 
 /// Represents configuration settings for the application, deserialized from a JSON file.
 ///
@@ -33,10 +46,6 @@ pub struct ConfigurationJson {
         deserialize_with = "normalize_wildcard_port"
     )]
     pub port: String,
-
-    /// Version of the Galadriel CSS to be used on build process, initialized to "*" (latest) if unspecified.
-    #[serde(default = "initial_version")]
-    pub version: String,
 }
 
 /// Returns `true` as the default value, used for fields requiring an enabled default state.
@@ -60,13 +69,6 @@ fn default_wildcard_port() -> String {
     "0".to_string()
 }
 
-/// Initializes the version to "*" (latest) if not provided, typically used as an initial version indicator.
-fn initial_version() -> String {
-    info!("Setting default version to '*' - latest");
-
-    "*".to_string()
-}
-
 fn normalize_wildcard_port<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -83,160 +85,290 @@ where
     Ok(normalized_port)
 }
 
-/// Represents configuration settings for an application or process, with key parameters
-/// for controlling behavior such as exclusions, style preferences, and connection settings.
 #[derive(Clone, PartialEq, Debug)]
-pub struct Configatron {
-    /// List of paths or identifiers to exclude from the configuration's scope.
-    exclude: Vec<String>,
-    /// Flag indicating if names should be injected during configuration processing.
-    auto_naming: bool,
-    /// Flag specifying if styles should be reset during configuration.
-    reset_styles: bool,
-    /// Flag indicating if the styles should be minified.
-    minified_styles: bool,
-    /// Port for network connections, represented as a string to allow flexibility.
-    port: String,
-    /// Version of Galadriel CSS to be used on build process, generally in "X.Y.Z" format.
-    version: String,
+pub enum GaladrielConfig {
+    Exclude(Vec<String>),
+    AutoNaming(bool),
+    ResetStyles(bool),
+    MinifiedStyles(bool),
+    Port(String),
 }
 
-impl Configatron {
-    /// Constructs a new `Configatron` instance with specified configuration parameters.
-    ///
-    /// # Parameters
-    ///
-    /// * `exclude` - A vector of paths or identifiers to exclude.
-    /// * `auto_naming` - Determines if names should be injected.
-    /// * `reset_styles` - Specifies whether styles should be reset.
-    /// * `minified_styles` - Indicates if styles should be minified.
-    /// * `port` - Network port as a string.
-    /// * `version` - Galadriel CSS version to be used on build process.
-    ///
-    /// # Returns
-    ///
-    /// * `Self` - A new `Configatron` instance.
-    pub fn new(
-        exclude: Vec<String>,
-        auto_naming: bool,
-        reset_styles: bool,
-        minified_styles: bool,
-        port: String,
-        version: String,
-    ) -> Self {
-        info!(
-            "Initializing Galadriel CSS configurations with exclude: {:?}, auto_naming: {}, reset_styles: {}, \
-            minified_styles: {}, port: {}, version: {}",
-            exclude, auto_naming, reset_styles, minified_styles, port, version
-        );
-
-        Self {
-            exclude,
-            auto_naming,
-            reset_styles,
-            minified_styles,
-            port,
-            version,
+impl GaladrielConfig {
+    pub fn switch_auto_naming(&mut self) {
+        if let GaladrielConfig::AutoNaming(ref mut flag) = self {
+            *flag = !*flag;
         }
     }
 
-    /// Retrieves the vector of excluded paths or identifiers.
-    ///
-    /// # Returns
-    ///
-    /// * `Vec<String>` - A clone of the `exclude` vector.
-    pub fn get_exclude(&self) -> Vec<String> {
-        // info!("Fetching exclude paths: {:?}", self.exclude);
-
-        self.exclude.clone()
+    pub fn switch_reset_styles(&mut self) {
+        if let GaladrielConfig::ResetStyles(ref mut flag) = self {
+            *flag = !*flag;
+        }
     }
 
-    /// Checks if names should be injected during processing.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - `true` if names are to be saved, otherwise `false`.
+    pub fn switch_minified_styles(&mut self) {
+        if let GaladrielConfig::MinifiedStyles(ref mut flag) = self {
+            *flag = !*flag;
+        }
+    }
+
+    pub fn _set_exclude(&mut self, exclude: Vec<String>) {
+        if let GaladrielConfig::Exclude(ref mut node) = self {
+            *node = exclude;
+        }
+    }
+
+    pub fn _set_port(&mut self, port: String) {
+        if let GaladrielConfig::Port(ref mut node) = self {
+            *node = port;
+        }
+    }
+
     pub fn get_auto_naming(&self) -> bool {
-        // info!("Fetching auto naming status: {}", self.auto_naming);
+        if let GaladrielConfig::AutoNaming(ref flag) = self {
+            return *flag;
+        }
 
-        self.auto_naming
+        false
     }
 
-    /// Checks if styles should be reset during processing.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - `true` if styles are to be reset, otherwise `false`.
     pub fn get_reset_styles(&self) -> bool {
-        // info!("Fetching reset styles status: {}", self.reset_styles);
+        if let GaladrielConfig::ResetStyles(ref flag) = self {
+            return *flag;
+        }
 
-        self.reset_styles
+        false
     }
 
-    /// Checks if styles should be minified.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - `true` if styles are to be minified, otherwise `false`.
     pub fn get_minified_styles(&self) -> bool {
-        // info!("Fetching minified styles status: {}", self.minified_styles);
+        if let GaladrielConfig::MinifiedStyles(ref flag) = self {
+            return *flag;
+        }
 
-        self.minified_styles
+        false
     }
 
-    /// Retrieves the network port configuration.
-    ///
-    /// # Returns
-    ///
-    /// * `String` - A clone of the `port` value.
+    pub fn get_exclude(&self) -> Vec<String> {
+        if let GaladrielConfig::Exclude(ref exclude) = self {
+            return exclude.to_vec();
+        }
+
+        vec![]
+    }
+
     pub fn get_port(&self) -> String {
-        // info!("Fetching port: {}", self.port);
+        if let GaladrielConfig::Port(ref port) = self {
+            return port.to_owned();
+        }
 
-        self.port.clone()
+        "0".to_string()
     }
+}
 
-    /// Retrieves the version of Galadriel CSS to be used in build mode.
-    ///
-    /// # Returns
-    ///
-    /// * `String` - A clone of the `version` value.
-    pub fn get_version(&self) -> String {
-        // info!("Fetching version: {}", self.version);
+pub fn set_configatron(
+    exclude: Vec<String>,
+    auto_naming: bool,
+    reset_styles: bool,
+    minified_styles: bool,
+    port: String,
+) {
+    CONFIGATRON.insert("exclude".to_string(), GaladrielConfig::Exclude(exclude));
+    CONFIGATRON.insert(
+        "autoNaming".to_string(),
+        GaladrielConfig::AutoNaming(auto_naming),
+    );
+    CONFIGATRON.insert(
+        "resetStyles".to_string(),
+        GaladrielConfig::ResetStyles(reset_styles),
+    );
+    CONFIGATRON.insert(
+        "minifiedStyles".to_string(),
+        GaladrielConfig::MinifiedStyles(minified_styles),
+    );
+    CONFIGATRON.insert("port".to_string(), GaladrielConfig::Port(port));
+}
 
-        self.version.clone()
+pub fn switch_auto_naming() {
+    match CONFIGATRON.get_mut("autoNaming") {
+        Some(ref mut auto_naming) => {
+            auto_naming.switch_auto_naming();
+        }
+        None => {}
     }
+}
 
-    pub fn toggle_reset_styles(&mut self) {
-        self.reset_styles = !self.reset_styles;
+pub fn switch_reset_styles() {
+    match CONFIGATRON.get_mut("resetStyles") {
+        Some(ref mut reset_styles) => {
+            reset_styles.switch_reset_styles();
+        }
+        None => {}
     }
+}
 
-    pub fn toggle_minified_styles(&mut self) {
-        self.minified_styles = !self.minified_styles;
+pub fn switch_minified_styles() {
+    match CONFIGATRON.get_mut("minifiedStyles") {
+        Some(ref mut minified_styles) => {
+            minified_styles.switch_minified_styles();
+        }
+        None => {}
     }
+}
 
-    pub fn toggle_auto_naming(&mut self) {
-        self.auto_naming = !self.auto_naming;
+pub fn get_auto_naming() -> bool {
+    match CONFIGATRON.get("autoNaming") {
+        Some(ref auto_naming) => auto_naming.get_auto_naming(),
+        None => false,
     }
+}
 
-    /*pub fn reset_version(&mut self, version: String) {
-        self.version = version;
-    }*/
+pub fn get_reset_styles() -> bool {
+    match CONFIGATRON.get("resetStyles") {
+        Some(ref reset_styles) => reset_styles.get_reset_styles(),
+        None => false,
+    }
+}
 
-    pub fn generate_configs_json(&self) -> ConfigurationJson {
-        ConfigurationJson {
-            exclude: self.exclude.clone(),
-            auto_naming: self.auto_naming,
-            reset_styles: self.reset_styles,
-            minified_styles: self.minified_styles,
-            port: self.port.clone(),
-            version: self.version.clone(),
+pub fn get_minified_styles() -> bool {
+    match CONFIGATRON.get("minifiedStyles") {
+        Some(ref minified_styles) => minified_styles.get_minified_styles(),
+        None => false,
+    }
+}
+
+pub fn get_exclude() -> Vec<String> {
+    match CONFIGATRON.get("exclude") {
+        Some(ref exclude) => exclude.get_exclude(),
+        None => vec![],
+    }
+}
+
+pub fn get_port() -> String {
+    match CONFIGATRON.get("port") {
+        Some(ref port) => port.get_port(),
+        None => "0".to_string(),
+    }
+}
+
+pub async fn load_galadriel_configs(working_dir: &PathBuf) -> GaladrielResult<()> {
+    let config_path = working_dir.join("galadriel.config.json");
+
+    if config_path.exists() {
+        match tokio::fs::read_to_string(config_path).await {
+            Ok(raw_content) => {
+                // Deserialize the JSON string into the ConfigurationJson struct.
+                let configs_json: ConfigurationJson =
+                    serde_json::from_str(&raw_content).map_err(|err| {
+                        GaladrielError::raise_general_other_error(
+                            ErrorKind::ConfigFileParsingError,
+                            &err.to_string(),
+                            ErrorAction::Notify,
+                        )
+                    })?;
+
+                set_configatron(
+                    configs_json.exclude,
+                    configs_json.auto_naming,
+                    configs_json.reset_styles,
+                    configs_json.minified_styles,
+                    configs_json.port,
+                );
+            }
+            Err(err) => {
+                return Err(GaladrielError::raise_general_other_error(
+                    ErrorKind::ConfigFileReadError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                ));
+            }
         }
     }
+
+    Ok(())
+}
+
+pub fn construct_exclude_matcher(working_dir: &PathBuf) -> GaladrielResult<overrides::Override> {
+    // Initialize the override builder with the working directory.
+    let mut overrides = overrides::OverrideBuilder::new(working_dir);
+    let exclude = get_exclude();
+
+    // Iterate through the list of excludes from the configuration and add them to the matcher.
+    for exclude in &exclude {
+        overrides
+            .add(&format!("!/{}", exclude.trim_start_matches("/")))
+            .map_err(|err| {
+                GaladrielError::raise_general_other_error(
+                    ErrorKind::ExcludeMatcherCreationError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                )
+            })?;
+    }
+
+    tracing::info!(
+        "Exclude matcher constructed with {} patterns.",
+        exclude.len()
+    );
+
+    // Return the built override object.
+    overrides.build().map_err(|err| {
+        GaladrielError::raise_general_other_error(
+            ErrorKind::ExcludeMatcherBuildFailed,
+            &err.to_string(),
+            ErrorAction::Notify,
+        )
+    })
+}
+
+pub async fn reconstruct_exclude_matcher(
+    working_dir: &PathBuf,
+    atomically_matcher: Arc<RwLock<overrides::Override>>,
+) -> GaladrielResult<GaladrielAlerts> {
+    let starting_time = Local::now();
+    let mut matcher = atomically_matcher.write().await;
+    let new_matcher = construct_exclude_matcher(working_dir)?;
+
+    tracing::info!("Successfully applied new exclude matcher configuration.");
+    *matcher = new_matcher;
+
+    let notification = GaladrielAlerts::create_information(
+        starting_time,
+        "Exclude matcher reconstructed successfully",
+    );
+
+    Ok(notification)
+}
+
+pub fn transform_configatron_to_json() -> GaladrielResult<String> {
+    serde_json::to_string_pretty(
+        &CONFIGATRON
+            .iter()
+            .map(|entry| {
+                let entry_value = match entry.value() {
+                    GaladrielConfig::Exclude(value) => json!(value),
+                    GaladrielConfig::AutoNaming(value) => json!(value),
+                    GaladrielConfig::ResetStyles(value) => json!(value),
+                    GaladrielConfig::MinifiedStyles(value) => json!(value),
+                    GaladrielConfig::Port(value) => json!(value),
+                };
+
+                (entry.key().to_owned(), entry_value)
+            })
+            .collect::<std::collections::HashMap<String, serde_json::Value>>(),
+    )
+    .map_err(|err| {
+        GaladrielError::raise_general_other_error(
+            ErrorKind::GaladrielConfigSerdeSerializationError,
+            &err.to_string(),
+            ErrorAction::Notify,
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::configatron::{Configatron, ConfigurationJson};
+    use crate::configatron::ConfigurationJson;
 
     #[test]
     fn test_default_configuration() {
@@ -249,7 +381,6 @@ mod tests {
         assert!(config.reset_styles);
         assert!(config.minified_styles);
         assert_eq!(config.port, "0");
-        assert_eq!(config.version, "*");
     }
 
     #[test]
@@ -272,35 +403,23 @@ mod tests {
         assert!(config.reset_styles);
         assert!(!config.minified_styles);
         assert_eq!(config.port, "0"); // normalize_wildcard_port should convert "*" to "0"
-        assert_eq!(config.version, "1.0.0");
     }
 
     #[test]
     fn test_configatron_initialization() {
-        let config_json = ConfigurationJson {
+        let config = ConfigurationJson {
             exclude: vec!["path1".to_string(), "path2".to_string()],
             auto_naming: true,
             reset_styles: false,
             minified_styles: true,
             port: "8080".to_string(),
-            version: "2.0.0".to_string(),
         };
 
-        let config = Configatron::new(
-            config_json.exclude,
-            config_json.auto_naming,
-            config_json.reset_styles,
-            config_json.minified_styles,
-            config_json.port,
-            config_json.version,
-        );
-
         // Verify initialization
-        assert_eq!(config.get_exclude(), vec!["path1", "path2"]);
-        assert!(config.get_auto_naming());
-        assert!(!config.get_reset_styles());
-        assert!(config.get_minified_styles());
-        assert_eq!(config.get_port(), "8080");
-        assert_eq!(config.get_version(), "2.0.0");
+        assert_eq!(config.exclude, vec!["path1", "path2"]);
+        assert!(config.auto_naming);
+        assert!(!config.reset_styles);
+        assert!(config.minified_styles);
+        assert_eq!(config.port, "8080");
     }
 }

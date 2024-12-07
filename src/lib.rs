@@ -1,21 +1,20 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{io::Stdout, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use baraddur::Baraddur;
-use chrono::{DateTime, Local};
-use configatron::{Configatron, ConfigurationJson};
+use chrono::Local;
+use configatron::{
+    construct_exclude_matcher, get_port, load_galadriel_configs, switch_auto_naming,
+    switch_minified_styles, switch_reset_styles, transform_configatron_to_json,
+};
 use error::{ErrorAction, ErrorKind, GaladrielError};
 use events::{GaladrielAlerts, GaladrielEvents};
-use ignore::overrides;
-use kickstartor::Kickstartor;
 use lothlorien::LothlorienPipeline;
 use palantir::Palantir;
-use shellscape::{app::ShellscapeApp, commands::ShellscapeCommands, Shellscape};
-use tokio::{
-    fs::OpenOptions,
-    io::AsyncWriteExt,
-    net::TcpListener,
-    sync::{broadcast, RwLock},
+use ratatui::prelude::CrosstermBackend;
+use shellscape::{
+    app::ShellscapeApp, commands::ShellscapeCommands, ui::ShellscapeInterface, Shellscape,
 };
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -49,7 +48,6 @@ pub type GaladrielResult<T> = Result<T, GaladrielError>;
 pub struct GaladrielRuntime {
     runtime_mode: GaladrielRuntimeKind,
     working_dir: PathBuf,
-    configatron: Configatron,
 }
 
 impl GaladrielRuntime {
@@ -57,14 +55,6 @@ impl GaladrielRuntime {
         Self {
             runtime_mode,
             working_dir,
-            configatron: Configatron::new(
-                vec![],
-                true,
-                true,
-                true,
-                "0".to_string(),
-                "0.0.0".to_string(),
-            ),
         }
     }
 
@@ -111,7 +101,7 @@ impl GaladrielRuntime {
     }
 
     async fn start_build_mode(&mut self) -> GaladrielResult<()> {
-        self.load_galadriel_config()?;
+        load_galadriel_configs(&self.working_dir).await?;
 
         println!("Build process not implemented yet.");
 
@@ -120,60 +110,37 @@ impl GaladrielRuntime {
 
     async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
         // Load the galadriel configurations.
-        self.load_galadriel_config()?;
+        load_galadriel_configs(&self.working_dir).await?;
 
-        let mut kickstartor = Kickstartor::new(
-            self.configatron.get_exclude(),
-            self.configatron.get_auto_naming(),
-        );
+        // Exclude matcher for file system monitoring
+        let working_dir = self.working_dir.clone();
+        let matcher = construct_exclude_matcher(&working_dir)?;
+        let atomically_matcher = Arc::new(RwLock::new(matcher));
 
-        // TODO: Set an initial state for the UI.
-        // TODO: Handle the initial parsing error.
-        // Processing Nenyr files for initial setup.
-        kickstartor.process_nyr_files().await?;
-
-        tracing::info!("Nenyr files processed successfully. Initial styles AST set successfully.");
-
-        // TODO: Pass the initial UI state for the dev runtime.
-        // Transition to development runtime.
-        self.development_runtime().await.map_err(|err| {
-            GaladrielError::raise_critical_runtime_error(
-                ErrorKind::Other,
-                &err.to_string(),
-                ErrorAction::Exit,
-            )
-        })
-    }
-
-    async fn development_runtime(&mut self) -> GaladrielResult<()> {
+        // Initialize the Palantir alerts system.
         let palantir_alerts = Palantir::new();
         let palantir_sender = palantir_alerts.get_palantir_sender();
         let _start_alert_watcher = palantir_alerts.start_alert_watcher();
-
-        // Initialize the Barad-dûr file system observer.
-        let working_dir = self.working_dir.clone();
-        let matcher = self.construct_exclude_matcher()?; // Exclude matcher for file system monitoring
-        let atomically_matcher = Arc::new(RwLock::new(matcher));
-
-        let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
-        let (mut debouncer, debouncer_sender) =
-            baraddur_observer.async_debouncer(Arc::clone(&atomically_matcher))?;
-        let _start_observation = baraddur_observer.watch(&mut debouncer, debouncer_sender.clone());
-        // ============================================================================
 
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
         let mut interface = shellscape.create_interface()?; // Terminal interface setup
-        let mut shellscape_app =
-            shellscape.create_app(self.configatron.clone(), palantir_sender.clone())?; // Application/state setup for Shellscape
+        let mut shellscape_app = shellscape.create_app(palantir_sender.clone())?; // Application/state setup for Shellscape
 
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
-        let mut pipeline = LothlorienPipeline::new(self.configatron.get_port());
+        let mut pipeline = LothlorienPipeline::new(get_port());
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
         let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
         let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
+
+        // Initialize the Barad-dûr file system observer.
+        let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
+        let matcher = Arc::clone(&atomically_matcher);
+        let (mut deb, deb_tx) = baraddur_observer.async_debouncer(matcher)?;
+        let matcher = Arc::clone(&atomically_matcher);
+        let _start_observation = baraddur_observer.watch(matcher, &mut deb, deb_tx.clone());
 
         // Set the running port.
         shellscape_app.reset_server_running_on_port(running_on_port);
@@ -182,19 +149,44 @@ impl GaladrielRuntime {
         // Start the Shellscape terminal interface rendering.
         interface.invoke()?;
 
+        // Transition to development runtime.
+        self.development_runtime(
+            palantir_alerts,
+            &mut pipeline,
+            &mut shellscape,
+            &mut shellscape_app,
+            &mut baraddur_observer,
+            &mut interface,
+        )
+        .await?;
+
+        // Clean up: Remove the temporary server port and abort the interface.
+        pipeline.remove_server_port_in_temp()?;
+        interface.abort()?;
+
+        Ok(())
+    }
+
+    async fn development_runtime(
+        &mut self,
+        palantir_alerts: Palantir,
+        pipeline: &mut LothlorienPipeline,
+        shellscape: &mut Shellscape,
+        shellscape_app: &mut ShellscapeApp,
+        baraddur_observer: &mut Baraddur,
+        interface: &mut ShellscapeInterface<CrosstermBackend<Stdout>>,
+    ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
 
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
-            if let Err(err) = interface.render(&mut shellscape_app) {
+            if let Err(err) = interface.render(shellscape_app) {
                 // TODO: handle the error.
 
                 println!("{:?}", err);
             }
 
             // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
-            // TODO: Make the alerts from the initial parsing be reflected in real time with the UI.
-
             // TODO: Implement comprehensive error handling for potential issues here, designing a robust mechanism to manage different error types effectively.
 
             tokio::select! {
@@ -227,7 +219,6 @@ impl GaladrielRuntime {
 
                             // TODO: handle the error.
                         }
-                        _ => {}
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
@@ -242,14 +233,6 @@ impl GaladrielRuntime {
 
                             // TODO: handle the error.
                         }
-                        Ok(event) => {
-                            self.match_observer_events(
-                                event,
-                                &mut shellscape_app,
-                                Arc::clone(&atomically_matcher),
-                                palantir_sender.clone()
-                            ).await;
-                        }
                         // Handle errors from the Barad-dûr observer and notify the application.
                         Err(err) => {
                             palantir_alerts.send_alert(GaladrielAlerts::create_galadriel_error(
@@ -259,6 +242,7 @@ impl GaladrielRuntime {
 
                             // TODO: handle the error.
                         }
+                        _ => {}
                     }
                 }
                 // Handle events from the Shellscape terminal interface.
@@ -285,21 +269,21 @@ impl GaladrielRuntime {
                                     shellscape_app.reset_dock_scroll_up();
                                 }
                                 ShellscapeCommands::ToggleResetStyles => {
-                                    self.configatron.toggle_reset_styles();
+                                    switch_reset_styles();
 
                                     if let Err(err) = self.replace_configurations_file().await {
                                         shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
                                 ShellscapeCommands::ToggleMinifiedStyles => {
-                                    self.configatron.toggle_minified_styles();
+                                    switch_minified_styles();
 
                                     if let Err(err) = self.replace_configurations_file().await {
                                         shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
                                     }
                                 }
                                 ShellscapeCommands::ToggleAutoNaming => {
-                                    self.configatron.toggle_auto_naming();
+                                    switch_auto_naming();
 
                                     if let Err(err) = self.replace_configurations_file().await {
                                         shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
@@ -381,112 +365,7 @@ impl GaladrielRuntime {
             }
         }
 
-        // Clean up: Remove the temporary server port and abort the interface.
-        pipeline.remove_server_port_in_temp()?;
-        interface.abort()?;
-
         Ok(())
-    }
-
-    /// Asynchronously handles incoming observer events and updates the Shellscape app
-    /// based on the received `GaladrielEvents`.
-    ///
-    /// # Parameters
-    /// - `event`: The observer event (`GaladrielEvents`) to process.
-    /// - `shellscape_app`: A mutable reference to the Shellscape app for updating UI states and alerts.
-    /// - `atomically_matcher`: A thread-safe reference-counted handle to manage configuration overrides.
-    async fn match_observer_events(
-        &mut self,
-        event: GaladrielEvents,
-        shellscape_app: &mut ShellscapeApp,
-        atomically_matcher: Arc<RwLock<overrides::Override>>,
-        sender: broadcast::Sender<GaladrielAlerts>,
-    ) {
-        match event {
-            // Handle reloading of Galadriel configuration when requested by the event.
-            GaladrielEvents::ReloadGaladrielConfigs => {
-                let start_time = Local::now();
-
-                // Attempt to load the latest Galadriel configuration.
-                match self.load_galadriel_config() {
-                    Ok(()) => {
-                        // If successful, reconstruct the exclude matcher asynchronously.
-                        self.reconstruct_exclude_matcher(
-                            start_time,
-                            atomically_matcher,
-                            shellscape_app,
-                        )
-                        .await;
-
-                        let ending_time = Local::now();
-                        let duration = ending_time - start_time;
-                        let notification = GaladrielAlerts::create_success(
-                            start_time,
-                            ending_time,
-                            duration,
-                            "Galadriel CSS configurations updated successfully. System is now operating with the latest configuration.",
-                        );
-
-                        // Update the Shellscape app's state with the new configuration and add a success notification.
-                        shellscape_app.reset_configs_state(self.configatron.clone());
-
-                        if let Err(err) = sender.send(notification) {
-                            tracing::error!("{:?}", err);
-                        }
-                    }
-                    // Log an error if configuration loading fails, and notify the Shellscape app.
-                    Err(err) => {
-                        tracing::error!(
-                            "Unable to load Galadriel CSS configurations. Encountered error: {:?}",
-                            err
-                        );
-
-                        let notification = GaladrielAlerts::create_galadriel_error(start_time, err);
-
-                        if let Err(err) = sender.send(notification) {
-                            tracing::error!("{:?}", err);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// Reconstructs the exclude matcher configuration asynchronously and updates the Shellscape app.
-    ///
-    /// # Arguments
-    /// * `start_time` - The time at which reconstruction started, for logging and notification purposes.
-    /// * `atomically_matcher` - A thread-safe matcher object to be updated with the new configuration.
-    /// * `shellscape_app` - The application instance to update based on the new matcher configuration.
-    async fn reconstruct_exclude_matcher(
-        &self,
-        start_time: DateTime<Local>,
-        atomically_matcher: Arc<RwLock<overrides::Override>>,
-        shellscape_app: &mut ShellscapeApp,
-    ) {
-        let mut matcher = atomically_matcher.write().await;
-
-        match self.construct_exclude_matcher() {
-            Ok(new_matcher) => {
-                tracing::info!("Successfully applied new exclude matcher configuration.");
-
-                *matcher = new_matcher;
-
-                let ending_time = Local::now();
-                let duration = ending_time - start_time;
-
-                GaladrielAlerts::create_success(start_time, ending_time, duration, "");
-            }
-            Err(err) => {
-                tracing::error!(
-                    "Failed to apply new exclude matcher configuration: {:?}",
-                    err
-                );
-
-                shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(start_time, err));
-            }
-        }
     }
 
     /// Extracts the local address from a TCP listener, handling any errors encountered.
@@ -522,149 +401,31 @@ impl GaladrielRuntime {
         Ok(local_addr.port())
     }
 
-    /// Constructs an exclude matcher for filtering files or directories.
-    ///
-    /// This method uses a builder pattern to construct an `Override` object
-    /// that holds a list of paths to exclude from processing. It reads the exclude
-    /// paths from the configuration, formats them correctly, and returns the built
-    /// `Override` object for further use.
-    ///
-    /// # Returns
-    /// Returns a `GaladrielResult` containing the built `Override` object or an error.
-    fn construct_exclude_matcher(&self) -> GaladrielResult<overrides::Override> {
-        // Initialize the override builder with the working directory.
-        let mut overrides = overrides::OverrideBuilder::new(self.working_dir.clone());
-
-        // Iterate through the list of excludes from the configuration and add them to the matcher.
-        for exclude in self.configatron.get_exclude().iter() {
-            overrides
-                .add(&format!("!/{}", exclude.trim_start_matches("/")))
-                .map_err(|err| {
-                    GaladrielError::raise_general_other_error(
-                        ErrorKind::ExcludeMatcherCreationError,
-                        &err.to_string(),
-                        ErrorAction::Notify,
-                    )
-                })?;
-        }
-
-        tracing::info!(
-            "Exclude matcher constructed with {} patterns.",
-            self.configatron.get_exclude().len()
-        );
-
-        // Return the built override object.
-        overrides.build().map_err(|err| {
-            GaladrielError::raise_general_other_error(
-                ErrorKind::ExcludeMatcherBuildFailed,
-                &err.to_string(),
-                ErrorAction::Notify,
-            )
-        })
-    }
-
-    /// Loads the Galadriel CSS configuration from a JSON file.
-    ///
-    /// This method reads the `galadriel.config.json` file from the working directory
-    /// and deserializes it into a `ConfigurationJson` struct. Then, it uses the configuration
-    /// data to create and apply a new `Configatron` instance to the `GaladrielRuntime`.
-    ///
-    /// If loading and parsing the configuration is successful, the `configatron` is updated.
-    /// If an error occurs during file reading or JSON parsing, it logs the error and returns a result.
-    ///
-    /// # Returns
-    /// Returns `GaladrielResult<()>` indicating success or failure of the configuration load.
-    fn load_galadriel_config(&mut self) -> GaladrielResult<()> {
-        // Define the path to the Galadriel configuration file.
-        let config_path = self.working_dir.join("galadriel.config.json");
-
-        if config_path.exists() {
-            tracing::debug!("Loading Galadriel CSS configuration from {:?}", config_path);
-
-            // Attempt to read the configuration file as a string.
-            match std::fs::read_to_string(config_path) {
-                Ok(raw_config) => {
-                    // Deserialize the JSON string into the ConfigurationJson struct.
-                    let config_json: ConfigurationJson = serde_json::from_str(&raw_config)
-                        .map_err(|err| {
-                            GaladrielError::raise_general_other_error(
-                                ErrorKind::ConfigFileParsingError,
-                                &err.to_string(),
-                                ErrorAction::Notify,
-                            )
-                        })?;
-
-                    // Create a new Configatron instance with the deserialized data.
-                    let configatron = Configatron::new(
-                        config_json.exclude,
-                        config_json.auto_naming,
-                        config_json.reset_styles,
-                        config_json.minified_styles,
-                        config_json.port,
-                        config_json.version,
-                    );
-
-                    // Apply the new configatron to the runtime.
-                    self.configatron = configatron;
-                    tracing::info!("Galadriel CSS configuration loaded and applied successfully.");
-                }
-                Err(err) => {
-                    tracing::error!("Failed to read Galadriel CSS configuration file: {:?}", err);
-
-                    return Err(GaladrielError::raise_general_other_error(
-                        ErrorKind::ConfigFileReadError,
-                        &err.to_string(),
-                        ErrorAction::Notify,
-                    ));
-                }
-            }
-        } else {
-            // Create a new Configatron instance with the deserialized data.
-            self.configatron =
-                Configatron::new(vec![], true, true, true, "0".to_string(), "*".to_string());
-
-            tracing::warn!("Galadriel CSS is starting with default configurations as `galadriel.config.json` was not found in the root directory.");
-        }
-
-        Ok(())
-    }
-
     async fn replace_configurations_file(&mut self) -> GaladrielResult<()> {
-        let configs_json = self.configatron.generate_configs_json();
         let config_path = self.working_dir.join("galadriel.config.json");
-
-        match OpenOptions::new()
+        let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
             .open(config_path)
             .await
-        {
-            Ok(mut file) => match serde_json::to_vec_pretty(&configs_json) {
-                Ok(bytes) => {
-                    if let Err(err) = file.write_all(&bytes).await {
-                        return Err(GaladrielError::raise_general_runtime_error(
-                            ErrorKind::GaladrielConfigFileWriteError,
-                            &err.to_string(),
-                            ErrorAction::Notify,
-                        ));
-                    }
-                }
-                Err(err) => {
-                    return Err(GaladrielError::raise_general_runtime_error(
-                        ErrorKind::GaladrielConfigSerdeSerializationError,
-                        &err.to_string(),
-                        ErrorAction::Notify,
-                    ));
-                }
-            },
-            Err(err) => {
-                return Err(GaladrielError::raise_general_runtime_error(
+            .map_err(|err| {
+                GaladrielError::raise_general_runtime_error(
                     ErrorKind::GaladrielConfigOpenFileError,
                     &err.to_string(),
                     ErrorAction::Notify,
-                ));
-            }
-        }
+                )
+            })?;
+
+        let serialized_configs = transform_configatron_to_json()?;
+        file.write_all(&serialized_configs.as_bytes())
+            .await
+            .map_err(|err| {
+                GaladrielError::raise_general_runtime_error(
+                    ErrorKind::GaladrielConfigFileWriteError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                )
+            })?;
 
         Ok(())
     }

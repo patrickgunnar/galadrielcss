@@ -12,7 +12,7 @@ use textwrap::Options;
 
 use crate::{
     asts::PALANTIR_ALERTS,
-    configatron::Configatron,
+    configatron::{get_auto_naming, get_exclude, get_minified_styles, get_reset_styles},
     error::GaladrielError,
     events::{AlertTextType, GaladrielAlerts},
 };
@@ -333,7 +333,7 @@ impl ShellscapeWidgets {
     ///
     /// # Returns
     /// - A `Vec<Line>` containing the configuration viewer output.
-    fn create_configs_viewer(&self, dock_width: u16, configs: Configatron, port: u16) -> Vec<Line> {
+    fn create_configs_viewer(&self, dock_width: u16, port: u16) -> Vec<Line> {
         let mut lines: Vec<Line> = vec![];
 
         // Add the configuration title.
@@ -345,7 +345,7 @@ impl ShellscapeWidgets {
         let mut reset_styles = self.format_config_label(
             "\u{1F7E6}".to_string(),
             "Reset Styles".to_string(),
-            format!("{}", configs.get_reset_styles()),
+            format!("{}", get_reset_styles()),
             dock_width,
         );
 
@@ -354,7 +354,7 @@ impl ShellscapeWidgets {
         let mut minified_styles = self.format_config_label(
             "\u{1F7EA}".to_string(),
             "Minified Styles".to_string(),
-            format!("{}", configs.get_minified_styles()),
+            format!("{}", get_minified_styles()),
             dock_width,
         );
 
@@ -363,7 +363,7 @@ impl ShellscapeWidgets {
         let mut auto_naming = self.format_config_label(
             "\u{1F7EB}".to_string(),
             "Auto Naming".to_string(),
-            format!("{}", configs.get_auto_naming()),
+            format!("{}", get_auto_naming()),
             dock_width,
         );
 
@@ -378,17 +378,7 @@ impl ShellscapeWidgets {
 
         lines.append(&mut port_element);
 
-        let mut version = self.format_config_label(
-            "\u{1F7E7}".to_string(),
-            "Version".to_string(),
-            format!("{}", configs.get_version()),
-            dock_width,
-        );
-
-        lines.append(&mut version);
-
-        let mut exclude =
-            self.format_exclude_vec("Exclude".to_string(), configs.get_exclude(), dock_width);
+        let mut exclude = self.format_exclude_vec("Exclude".to_string(), get_exclude(), dock_width);
 
         lines.append(&mut exclude);
 
@@ -535,11 +525,11 @@ impl ShellscapeWidgets {
     ///
     /// # Returns:
     /// - `Vec<Line>`: A list of lines representing all dock content.
-    fn format_dock_settings(&self, dock_width: u16, configs: Configatron, port: u16) -> Vec<Line> {
+    fn format_dock_settings(&self, dock_width: u16, port: u16) -> Vec<Line> {
         let mut lines: Vec<Line> = vec![];
 
         // Append configuration viewer lines.
-        let mut configs_viewer = self.create_configs_viewer(dock_width, configs, port);
+        let mut configs_viewer = self.create_configs_viewer(dock_width, port);
         lines.append(&mut configs_viewer);
 
         // Append separator lines between sections.
@@ -573,11 +563,8 @@ impl ShellscapeWidgets {
     /// - `(Paragraph, usize)`: The dock UI element and the total number of lines.
     fn create_dock(&self, dock_width: u16, app: &mut ShellscapeApp) -> (Paragraph, usize) {
         // Format the dock's content into lines.
-        let lines: Vec<Line> = self.format_dock_settings(
-            dock_width,
-            app.get_configs(),
-            app.get_server_running_on_port(),
-        );
+        let lines: Vec<Line> =
+            self.format_dock_settings(dock_width, app.get_server_running_on_port());
 
         // Calculate the total number of lines for scrolling purposes.
         let lines_len = lines.len();

@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use chrono::Local;
+use chrono::{DateTime, Local};
 use events::{BaraddurEventProcessor, BaraddurEventProcessorKind, BaraddurRenameEventState};
 use ignore::overrides;
 use nenyr::NenyrParser;
@@ -17,6 +17,7 @@ use tokio::{
 };
 
 use crate::{
+    configatron::{get_auto_naming, load_galadriel_configs, reconstruct_exclude_matcher},
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{GaladrielAlerts, GaladrielEvents},
     formera::Formera,
@@ -274,13 +275,13 @@ impl Baraddur {
 
     pub fn watch(
         &self,
+        matcher: Arc<RwLock<overrides::Override>>,
         debouncer: &mut Debouncer<RecommendedWatcher, RecommendedCache>,
         debouncer_sender: sync::broadcast::Sender<Vec<BaraddurEventProcessor>>,
     ) -> JoinHandle<()> {
         let baraddur_sender = self.baraddur_sender.clone();
         let palantir_sender = self.palantir_sender.clone();
         let working_dir = self.working_dir.clone();
-        let configuration_path = working_dir.join("galadriel.config.json");
 
         let mut palantir_receiver = palantir_sender.subscribe();
         let mut debouncer_receiver = debouncer_sender.subscribe();
@@ -322,9 +323,9 @@ impl Baraddur {
                     }
                     debounced_event_result = debouncer_receiver.recv() => {
                         Self::match_debounced_result(
-                            &configuration_path,
+                            &working_dir,
                             &mut nenyr_parser,
-                            baraddur_sender.clone(),
+                            Arc::clone(&matcher),
                             palantir_sender.clone(),
                             &debounced_event_result
                         )
@@ -336,9 +337,9 @@ impl Baraddur {
     }
 
     async fn match_debounced_result(
-        _configuration_path: &PathBuf,
+        working_dir: &PathBuf,
         nenyr_parser: &mut NenyrParser,
-        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
+        matcher: Arc<RwLock<overrides::Override>>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
         debounced_event_result: &Result<
             Vec<BaraddurEventProcessor>,
@@ -350,13 +351,12 @@ impl Baraddur {
                 for debounced_event in debounced_events {
                     match debounced_event {
                         BaraddurEventProcessor::ReloadGaladrielConfigs => {
-                            // TODO: Reload configurations.
-
-                            if let Err(err) =
-                                baraddur_sender.send(GaladrielEvents::ReloadGaladrielConfigs)
-                            {
-                                tracing::error!("{:?}", err);
-                            }
+                            Self::reload_galadriel_configs(
+                                working_dir,
+                                Arc::clone(&matcher),
+                                palantir_sender.clone(),
+                            )
+                            .await;
                         }
                         BaraddurEventProcessor::ProcessEvent { kind, path } => {
                             Self::match_processing_event_kind(
@@ -380,6 +380,44 @@ impl Baraddur {
                 let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                 Self::send_palantir_notification(notification, palantir_sender.clone());
+            }
+        }
+    }
+
+    async fn reload_galadriel_configs(
+        working_dir: &PathBuf,
+        matcher: Arc<RwLock<overrides::Override>>,
+        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    ) {
+        let starting_time = Local::now();
+
+        match load_galadriel_configs(working_dir).await {
+            Ok(()) => {
+                match reconstruct_exclude_matcher(working_dir, matcher).await {
+                    Ok(notification) => {
+                        Self::send_palantir_notification(notification, palantir_sender.clone());
+                    }
+                    Err(error) => {
+                        Self::send_palantir_error_notification(
+                            error,
+                            starting_time,
+                            palantir_sender.clone(),
+                        );
+                    }
+                }
+
+                Self::send_palantir_success_notification(
+                    "Galadriel CSS configurations updated successfully. System is now operating with the latest configuration.",
+                    starting_time,
+                    palantir_sender.clone()
+                );
+            }
+            Err(error) => {
+                Self::send_palantir_error_notification(
+                    error,
+                    starting_time,
+                    palantir_sender.clone(),
+                );
             }
         }
     }
@@ -415,7 +453,7 @@ impl Baraddur {
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         let stringified_path = current_path.to_string_lossy().to_string();
-        let is_auto_naming = false;
+        let is_auto_naming = get_auto_naming();
         let starting_time = Local::now();
 
         let notification = GaladrielAlerts::create_information(
@@ -429,17 +467,11 @@ impl Baraddur {
 
         match formera.start(nenyr_parser).await {
             Ok(()) => {
-                let ending_time = Local::now();
-                let duration = ending_time - starting_time;
-
-                let notification = GaladrielAlerts::create_success(
-                    starting_time,
-                    ending_time,
-                    duration,
+                Self::send_palantir_success_notification(
                     &format!("Successfully parsed Nenyr file: {:?}", stringified_path),
+                    starting_time,
+                    palantir_sender.clone(),
                 );
-
-                Self::send_palantir_notification(notification, palantir_sender.clone());
             }
             Err(GaladrielError::NenyrError { start_time, error }) => {
                 let notification =
@@ -447,13 +479,36 @@ impl Baraddur {
 
                 Self::send_palantir_notification(notification, palantir_sender.clone());
             }
-            Err(err) => {
-                let notification =
-                    GaladrielAlerts::create_galadriel_error(Local::now(), err.to_owned());
-
-                Self::send_palantir_notification(notification, palantir_sender.clone());
+            Err(error) => {
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
             }
         }
+    }
+
+    fn send_palantir_success_notification(
+        message: &str,
+        starting_time: DateTime<Local>,
+        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    ) {
+        let ending_time = Local::now();
+        let duration = ending_time - starting_time;
+        let notification =
+            GaladrielAlerts::create_success(starting_time, ending_time, duration, message);
+
+        Self::send_palantir_notification(notification, palantir_sender.clone());
+    }
+
+    fn send_palantir_error_notification(
+        error: GaladrielError,
+        starting_time: DateTime<Local>,
+        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    ) {
+        let notification = GaladrielAlerts::create_galadriel_error(starting_time, error);
+        Self::send_palantir_notification(notification, palantir_sender.clone());
     }
 
     fn send_palantir_notification(
