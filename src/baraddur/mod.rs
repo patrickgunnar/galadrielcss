@@ -23,6 +23,7 @@ use crate::{
     formera::Formera,
     gatekeeper::remove_path_from_gatekeeper,
     intaker::remove_context_from_intaker::remove_context_from_intaker,
+    trailblazer::Trailblazer,
     GaladrielResult,
 };
 
@@ -587,6 +588,7 @@ impl Baraddur {
                             &working_dir,
                             &mut nenyr_parser,
                             Arc::clone(&matcher),
+                            baraddur_sender.clone(),
                             palantir_sender.clone(),
                             &debounced_event_result
                         )
@@ -609,6 +611,7 @@ impl Baraddur {
         working_dir: &PathBuf,
         nenyr_parser: &mut NenyrParser,
         matcher: Arc<RwLock<overrides::Override>>,
+        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
         debounced_event_result: &Result<
             Vec<BaraddurEventProcessor>,
@@ -647,8 +650,9 @@ impl Baraddur {
 
                             Self::match_processing_event_kind(
                                 path,
-                                kind,
                                 nenyr_parser,
+                                kind,
+                                baraddur_sender.clone(),
                                 palantir_sender.clone(),
                             )
                             .await;
@@ -747,8 +751,9 @@ impl Baraddur {
     /// - `palantir_sender`: Sender used to broadcast alerts or notifications.
     async fn match_processing_event_kind(
         current_path: &PathBuf,
-        processing_event_kind: &BaraddurEventProcessorKind,
         nenyr_parser: &mut NenyrParser,
+        processing_event_kind: &BaraddurEventProcessorKind,
+        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         tracing::debug!(
@@ -768,6 +773,7 @@ impl Baraddur {
                 Self::process_nenyr_file(
                     current_path.to_owned(),
                     nenyr_parser,
+                    baraddur_sender,
                     palantir_sender.clone(),
                 )
                 .await;
@@ -794,6 +800,7 @@ impl Baraddur {
     async fn process_nenyr_file(
         current_path: PathBuf,
         nenyr_parser: &mut NenyrParser,
+        _baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         let stringified_path = current_path.to_string_lossy().to_string(); // Convert path to a string.
@@ -818,7 +825,7 @@ impl Baraddur {
         // Attempt to start parsing the Nenyr file.
         match formera.start(nenyr_parser).await {
             // Notify Palantir on successful parsing.
-            Ok(()) => {
+            Ok(layout_relation) => {
                 tracing::info!("Successfully parsed Nenyr file: {:?}", stringified_path);
 
                 Self::send_palantir_success_notification(
@@ -826,6 +833,25 @@ impl Baraddur {
                     starting_time,
                     palantir_sender.clone(),
                 );
+
+                // TODO: Reprocess the layout relation paths if any and send the paths to the main runtime to be sent to the integration client.
+                // TODO: If the current context is a Central context, reload all the contexts of the application and send to the integration client a command to reload the entire application.
+
+                if let Some(layout_relation) = layout_relation {
+                    let notification = GaladrielAlerts::create_information(
+                        Local::now(),
+                        &format!(
+                            "The current layout context contains these relations: {:?}",
+                            layout_relation
+                        ),
+                    );
+
+                    Self::send_palantir_notification(notification, palantir_sender.clone());
+                }
+
+                Trailblazer::default().blazer();
+
+                // TODO: Send the event of reload to the main runtime, to be sent to the integration client.
             }
             // Handle Nenyr-specific errors.
             Err(GaladrielError::NenyrError { start_time, error }) => {

@@ -20,7 +20,7 @@ use super::{
         variables::{resolve_variable_from_str, VariablesOption},
     },
     utils::generate_utility_class_name::generate_utility_class_name,
-    Crealion, CrealionContextType,
+    Crealion,
 };
 
 impl Crealion {
@@ -36,13 +36,11 @@ impl Crealion {
         &self,
         context_name: String,
         inherited_contexts: Vec<String>,
-        parent_context: Option<String>,
         classes_data: IndexMap<String, NenyrStyleClass>,
-        context_type: CrealionContextType,
+        tracking_map: &mut IndexMap<String, IndexMap<String, Vec<String>>>,
     ) {
         tracing::info!(
             context_name = %context_name,
-            context_type = ?context_type,
             num_classes = classes_data.len(),
             "Starting to process classes for context"
         );
@@ -110,20 +108,13 @@ impl Crealion {
                 "Finished processing styles for class"
             );
 
-            // Apply the processed class tracking data to the class management system.
-            self.apply_tracking_map_to_classinator(
-                class_name.to_owned(),
-                context_name.to_owned(),
-                derived_from,
-                parent_context.to_owned(),
-                tracking_cls_names,
-                context_type.to_owned(),
-            );
-
-            tracing::debug!(
-                class_name = %class_name,
-                "Applied tracking map to Classinator"
-            );
+            // Retrieve or initialize the mapping for the parent context (`derived_from`) in the `tracking_map`.
+            // If no entry exists for `derived_from`, a default value is created.
+            //
+            // Then, insert the `class_name` and its associated `tracking_cls_names` into this context's mapping.
+            // This ensures the derived class relationship is recorded and managed within the tracking system.
+            let derived_from_map = tracking_map.entry(derived_from).or_default();
+            derived_from_map.insert(class_name, tracking_cls_names);
         }
 
         tracing::info!(context_name = %context_name, "Completed processing all classes for context");
@@ -711,11 +702,7 @@ mod classes_tests {
     use nenyr::types::{ast::NenyrAst, central::CentralContext, class::NenyrStyleClass};
     use tokio::sync::broadcast;
 
-    use crate::{
-        asts::{CLASSINATOR, STYLITRON},
-        crealion::{Crealion, CrealionContextType},
-        types::{Classinator, Stylitron},
-    };
+    use crate::{asts::STYLITRON, crealion::Crealion, types::Stylitron};
 
     fn mock_breakpoints() {
         let map = IndexMap::from([(
@@ -782,6 +769,7 @@ mod classes_tests {
         mock_breakpoints();
 
         let (sender, _) = broadcast::channel(10);
+        let mut tracking_map: IndexMap<String, IndexMap<String, Vec<String>>> = IndexMap::new();
 
         let crealion = Crealion::new(
             sender,
@@ -793,9 +781,8 @@ mod classes_tests {
             .process_classes(
                 "firstClassContextName".to_string(),
                 vec!["firstClassContextName".to_string()],
-                None,
                 mock_classes(),
-                CrealionContextType::Module,
+                &mut tracking_map,
             )
             .await;
 
@@ -911,71 +898,6 @@ mod classes_tests {
         assert_eq!(
             second_responsive_cls.unwrap(),
             "mMd\\.hvr\\.bgd-clr-fWgf".to_string()
-        );
-    }
-
-    #[tokio::test]
-    async fn tracking_map_exists_in_ast() {
-        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-
-        mock_breakpoints();
-
-        let (sender, _) = broadcast::channel(10);
-
-        let crealion = Crealion::new(
-            sender,
-            NenyrAst::CentralContext(CentralContext::new()),
-            "".to_string(),
-        );
-
-        let _ = crealion
-            .process_classes(
-                "firstClassContextName".to_string(),
-                vec!["firstClassContextName".to_string()],
-                None,
-                mock_classes(),
-                CrealionContextType::Module,
-            )
-            .await;
-
-        let classinator =
-            CLASSINATOR
-                .get("modules")
-                .and_then(|classinator_data| match &*classinator_data {
-                    Classinator::Modules(ref modules_map) => {
-                        modules_map.get("_").and_then(|maps| {
-                            maps.get("firstClassContextName")
-                                .and_then(|context_map| Some(context_map.to_owned()))
-                        })
-                    }
-                    _ => None,
-                });
-
-        assert!(classinator.is_some());
-        assert_eq!(
-            classinator.unwrap(),
-            IndexMap::from([
-                (
-                    "oneExtraClass".to_string(),
-                    IndexMap::from([(
-                        "thisJustAnotherClass".to_string(),
-                        vec![
-                            "\\!bgd-clr-NmXB".to_string(),
-                            "mMd\\.\\!bgd-clr-a1Ib".to_string()
-                        ]
-                    )])
-                ),
-                (
-                    "_".to_string(),
-                    IndexMap::from([(
-                        "oneExtraClass".to_string(),
-                        vec![
-                            "hvr\\.bgd-clr-DA0P".to_string(),
-                            "mMd\\.hvr\\.bgd-clr-fWgf".to_string()
-                        ]
-                    )])
-                )
-            ])
         );
     }
 }

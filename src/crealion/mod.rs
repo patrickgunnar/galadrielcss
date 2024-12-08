@@ -205,15 +205,35 @@ impl Crealion {
 
         tracing::debug!("Extracted classes: {:?}", classes_data);
 
+        // Initialize a hierarchical tracking map using `IndexMap`.
+        //
+        // The outer map uses `String` keys to represent derived class names. Each derived class
+        // name maps to an inner `IndexMap`, where keys are class names (`String`) and values are vectors
+        // of strings (`Vec<String>`), representing the tracking relationships for CSS utility classes.
+        //
+        // The initial map includes a default context `"_"`, which is pre-populated with an empty `IndexMap`
+        // to serve as a fallback for Nenyr classes that does not derive any other class.
+        let mut tracking_map: IndexMap<String, IndexMap<String, Vec<String>>> =
+            IndexMap::from([("_".to_string(), IndexMap::new())]);
+
         // Process classes for the central context.
         self.process_classes(
-            context_name,
+            context_name.to_owned(),
             inherited_contexts,
-            None, // No parent context for central.
             classes_data,
-            CrealionContextType::Central,
+            &mut tracking_map,
         )
         .await;
+
+        // Integrates the processed tracking data into the `CLASSINATOR` system,
+        // which manages the mapping between Nenyr classes and their corresponding CSS utility classes,
+        // including inheritance.
+        self.apply_tracking_map_to_classinator(
+            context_name,
+            None,
+            CrealionContextType::Central,
+            tracking_map,
+        );
 
         tracing::info!("Central Context Collector initialization completed");
 
@@ -316,15 +336,35 @@ impl Crealion {
 
         tracing::debug!("Extracted classes: {:?}", classes_data);
 
+        // Initialize a hierarchical tracking map using `IndexMap`.
+        //
+        // The outer map uses `String` keys to represent derived class names. Each derived class
+        // name maps to an inner `IndexMap`, where keys are class names (`String`) and values are vectors
+        // of strings (`Vec<String>`), representing the tracking relationships for CSS utility classes.
+        //
+        // The initial map includes a default context `"_"`, which is pre-populated with an empty `IndexMap`
+        // to serve as a fallback for Nenyr classes that does not derive any other class.
+        let mut tracking_map: IndexMap<String, IndexMap<String, Vec<String>>> =
+            IndexMap::from([("_".to_string(), IndexMap::new())]);
+
         // Process class definitions, applying the layout-specific settings.
         self.process_classes(
             context_name.to_owned(),
             inherited_contexts,
-            None, // No parent context for central - it defaults to the central context, but it does not need to be defined here.
             classes_data,
-            CrealionContextType::Layout,
+            &mut tracking_map,
         )
         .await;
+
+        // Integrates the processed tracking data into the `CLASSINATOR` system,
+        // which manages the mapping between Nenyr classes and their corresponding CSS utility classes,
+        // including inheritance.
+        self.apply_tracking_map_to_classinator(
+            context_name.to_owned(),
+            None,
+            CrealionContextType::Layout,
+            tracking_map,
+        );
 
         tracing::info!(
             "Layout Context Collector initialization completed for: {}",
@@ -423,15 +463,35 @@ impl Crealion {
 
         tracing::debug!("Extracted classes: {:?}", classes_data);
 
+        // Initialize a hierarchical tracking map using `IndexMap`.
+        //
+        // The outer map uses `String` keys to represent derived class names. Each derived class
+        // name maps to an inner `IndexMap`, where keys are class names (`String`) and values are vectors
+        // of strings (`Vec<String>`), representing the tracking relationships for CSS utility classes.
+        //
+        // The initial map includes a default context `"_"`, which is pre-populated with an empty `IndexMap`
+        // to serve as a fallback for Nenyr classes that does not derive any other class.
+        let mut tracking_map: IndexMap<String, IndexMap<String, Vec<String>>> =
+            IndexMap::from([("_".to_string(), IndexMap::new())]);
+
         // Process class definitions, integrating any extended context and applying module-specific settings.
         self.process_classes(
             context_name.to_owned(),
             inherited_contexts,
-            context.extending_from.to_owned(), // The parent for this context.
             classes_data,
-            CrealionContextType::Module,
+            &mut tracking_map,
         )
         .await;
+
+        // Integrates the processed tracking data into the `CLASSINATOR` system,
+        // which manages the mapping between Nenyr classes and their corresponding CSS utility classes,
+        // including inheritance.
+        self.apply_tracking_map_to_classinator(
+            context_name.to_owned(),
+            context.extending_from.to_owned(),
+            CrealionContextType::Module,
+            tracking_map,
+        );
 
         tracing::info!(
             "Module Context Collector initialization completed for: {}",

@@ -29,8 +29,10 @@ impl Formera {
         }
     }
 
-    pub async fn start(&mut self, nenyr_parser: &mut NenyrParser) -> GaladrielResult<()> {
-        let sender = self.sender.clone();
+    pub async fn start(
+        &mut self,
+        nenyr_parser: &mut NenyrParser,
+    ) -> GaladrielResult<Option<Vec<String>>> {
         let start_time = Local::now();
         let raw_content = resilient_reader(&self.path).await?;
         let raw_content = self.process_names_injection(raw_content)?;
@@ -43,31 +45,7 @@ impl Formera {
 
         let mut crealion = Crealion::new(self.sender.clone(), parsed_ast, path.into());
 
-        match crealion.create().await {
-            Ok(None) => {}
-            Ok(Some(layout_relation)) => {
-                let notification = GaladrielAlerts::create_information(
-                    Local::now(),
-                    &format!(
-                        "The current layout context contains these relations: {:?}",
-                        layout_relation
-                    ),
-                );
-
-                if let Err(err) = sender.send(notification) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            Err(err) => {
-                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), err);
-
-                if let Err(err) = sender.send(notification) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-        }
-
-        Ok(())
+        crealion.create().await
     }
 
     pub fn process_names_injection(&self, raw_content: String) -> GaladrielResult<String> {

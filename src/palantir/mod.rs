@@ -17,6 +17,7 @@ pub struct Palantir {
     palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
 }
 
+#[allow(dead_code)]
 impl Palantir {
     /// Creates a new `Palantir` instance with a broadcast channel of capacity 100.
     ///

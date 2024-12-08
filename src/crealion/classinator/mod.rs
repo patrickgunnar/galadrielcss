@@ -22,18 +22,17 @@ impl Crealion {
     /// - `context_type`: The type of context (Central, Layout, Module).
     pub fn apply_tracking_map_to_classinator(
         &self,
-        class_name: String,
         context_name: String,
-        derived_from: String,
         parent_context: Option<String>,
-        tracking_cls_names: Vec<String>,
         context_type: CrealionContextType,
+        tracking_map: IndexMap<String, IndexMap<String, Vec<String>>>,
     ) {
         let sender = self.sender.clone();
 
         tracing::debug!(
-            "Applying tracking map to Classinator: class_name={}, context_name={}, derived_from={}, parent_context={:?}, context_type={:?}",
-            class_name, context_name, derived_from, parent_context, context_type
+            "Applying tracking map to Classinator: context_name={}, context_type={:?}",
+            context_name,
+            context_type
         );
 
         // Determine the appropriate context node name based on the context type.
@@ -83,21 +82,14 @@ impl Crealion {
             Classinator::Central(ref mut central_definitions) => {
                 tracing::debug!("Applying tracking map to Central node.");
 
-                self.apply_tracking_map_to_node(
-                    derived_from,
-                    class_name,
-                    tracking_cls_names,
-                    central_definitions,
-                );
+                *central_definitions = tracking_map
             }
             Classinator::Layouts(ref mut layouts_definitions) => {
                 tracing::debug!("Applying tracking map to Layouts node.");
 
                 self.apply_tracking_map_to_layouts_node(
-                    derived_from,
-                    class_name,
                     context_name,
-                    tracking_cls_names,
+                    tracking_map,
                     layouts_definitions,
                 );
             }
@@ -105,43 +97,13 @@ impl Crealion {
                 tracing::debug!("Applying tracking map to Modules node.");
 
                 self.apply_tracking_map_to_modules_node(
-                    derived_from,
-                    class_name,
                     context_name,
                     parent_context,
-                    tracking_cls_names,
+                    tracking_map,
                     modules_definitions,
                 );
             }
         }
-    }
-
-    /// Applies a tracking map to a node within the Classinator structure.
-    ///
-    /// # Parameters
-    /// - `derived_from`: The parent or source of the class definition.
-    /// - `class_name`: The class name to add to the node.
-    /// - `tracking_cls_names`: A vector of class names for tracking.
-    /// - `node_definitions`: The node definitions map to update.
-    fn apply_tracking_map_to_node(
-        &self,
-        derived_from: String,
-        class_name: String,
-        tracking_cls_names: Vec<String>,
-        node_definitions: &mut IndexMap<String, IndexMap<String, Vec<String>>>,
-    ) {
-        tracing::info!(
-            "Applying tracking map to node: derived_from={}, class_name={}",
-            derived_from,
-            class_name
-        );
-
-        // Retrieve or create the entry for the derived class map.
-        let derived_map = node_definitions.entry(derived_from).or_default();
-        // Retrieve or create the entry for the class name map and update it.
-        let class_map = derived_map.entry(class_name).or_default();
-
-        *class_map = tracking_cls_names;
     }
 
     /// Applies a tracking map to the layouts node within the Classinator structure.
@@ -154,22 +116,19 @@ impl Crealion {
     /// - `layouts_definitions`: The layouts node definitions map to update.
     fn apply_tracking_map_to_layouts_node(
         &self,
-        derived_from: String,
-        class_name: String,
         context_name: String,
-        tracking_cls_names: Vec<String>,
+        tracking_map: IndexMap<String, IndexMap<String, Vec<String>>>,
         layouts_definitions: &mut IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>,
     ) {
         tracing::info!(
-            "Applying tracking map to layouts node: derived_from={}, class_name={}, context_name={}",
-            derived_from, class_name, context_name
+            "Applying tracking map to layouts node: context_name={}",
+            context_name
         );
 
         // Retrieve or create the map for the specified context name.
         let layouts_map = layouts_definitions.entry(context_name).or_default();
 
-        // Delegate the mapping process to the node-level method.
-        self.apply_tracking_map_to_node(derived_from, class_name, tracking_cls_names, layouts_map);
+        *layouts_map = tracking_map;
     }
 
     /// Applies a tracking map to the modules node within the Classinator structure.
@@ -183,11 +142,9 @@ impl Crealion {
     /// - `modules_definitions`: The modules node definitions map to update.
     fn apply_tracking_map_to_modules_node(
         &self,
-        derived_from: String,
-        class_name: String,
         context_name: String,
         parent_context: Option<String>,
-        tracking_cls_names: Vec<String>,
+        tracking_map: IndexMap<String, IndexMap<String, Vec<String>>>,
         modules_definitions: &mut IndexMap<
             String,
             IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>,
@@ -197,21 +154,22 @@ impl Crealion {
         let parent_context = parent_context.unwrap_or("_".to_string());
 
         tracing::info!(
-            "Applying tracking map to modules node: derived_from={}, class_name={}, context_name={}, parent_context={:?}",
-            derived_from, class_name, context_name, parent_context
+            "Applying tracking map to modules node: context_name={}, parent_context={:?}",
+            context_name,
+            parent_context
         );
 
         // Retrieve or create the map for the specified parent and context name.
         let parents_map = modules_definitions.entry(parent_context).or_default();
         let modules_map = parents_map.entry(context_name).or_default();
 
-        // Delegate the mapping process to the node-level method.
-        self.apply_tracking_map_to_node(derived_from, class_name, tracking_cls_names, modules_map);
+        *modules_map = tracking_map;
     }
 }
 
 #[cfg(test)]
 mod classinator_tests {
+    use indexmap::IndexMap;
     use nenyr::types::{ast::NenyrAst, central::CentralContext};
     use tokio::sync::broadcast;
 
@@ -232,16 +190,20 @@ mod classinator_tests {
         );
 
         crealion.apply_tracking_map_to_classinator(
-            "myTestClassinatorClass".to_string(),
             "central".to_string(),
-            "_".to_string(),
             None,
-            vec![
-                "utility-cls-one".to_string(),
-                "utility-cls-two".to_string(),
-                "utility-cls-three".to_string(),
-            ],
             CrealionContextType::Central,
+            IndexMap::from([(
+                "_".to_string(),
+                IndexMap::from([(
+                    "myTestClassinatorClass".to_string(),
+                    vec![
+                        "utility-cls-one".to_string(),
+                        "utility-cls-two".to_string(),
+                        "utility-cls-three".to_string(),
+                    ],
+                )]),
+            )]),
         );
 
         let cls_map =
@@ -277,16 +239,20 @@ mod classinator_tests {
         );
 
         crealion.apply_tracking_map_to_classinator(
-            "myTestClassinatorClass".to_string(),
             "classinatorLayoutContextName".to_string(),
-            "_".to_string(),
             None,
-            vec![
-                "utility-cls-one".to_string(),
-                "utility-cls-two".to_string(),
-                "utility-cls-three".to_string(),
-            ],
             CrealionContextType::Layout,
+            IndexMap::from([(
+                "_".to_string(),
+                IndexMap::from([(
+                    "myTestClassinatorClass".to_string(),
+                    vec![
+                        "utility-cls-one".to_string(),
+                        "utility-cls-two".to_string(),
+                        "utility-cls-three".to_string(),
+                    ],
+                )]),
+            )]),
         );
 
         let cls_map =
@@ -326,16 +292,20 @@ mod classinator_tests {
         );
 
         crealion.apply_tracking_map_to_classinator(
-            "myTestClassinatorClass".to_string(),
             "classinatorModuleContextName".to_string(),
-            "_".to_string(),
             None,
-            vec![
-                "utility-cls-one".to_string(),
-                "utility-cls-two".to_string(),
-                "utility-cls-three".to_string(),
-            ],
             CrealionContextType::Module,
+            IndexMap::from([(
+                "_".to_string(),
+                IndexMap::from([(
+                    "myTestClassinatorClass".to_string(),
+                    vec![
+                        "utility-cls-one".to_string(),
+                        "utility-cls-two".to_string(),
+                        "utility-cls-three".to_string(),
+                    ],
+                )]),
+            )]),
         );
 
         let cls_map =

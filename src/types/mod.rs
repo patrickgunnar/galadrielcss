@@ -39,3 +39,10 @@ pub enum Classinator {
     Layouts(IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>),
     Modules(IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, Vec<String>>>>>),
 }
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Clastrack {
+    Central(IndexMap<String, String>),
+    Layouts(IndexMap<String, IndexMap<String, String>>),
+    Modules(IndexMap<String, IndexMap<String, String>>),
+}

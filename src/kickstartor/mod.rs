@@ -10,6 +10,7 @@ pub struct Kickstartor {
     exclude: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl Kickstartor {
     pub fn new(exclude: Vec<String>, is_names_on_save: bool) -> Self {
         Self {

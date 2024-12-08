@@ -33,6 +33,7 @@ mod kickstartor;
 mod lothlorien;
 mod palantir;
 mod shellscape;
+mod trailblazer;
 mod types;
 mod utils;
 
