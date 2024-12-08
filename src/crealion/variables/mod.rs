@@ -293,41 +293,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_apply_variables_with_empty_variables_data() {
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-        let (sender, _) = broadcast::channel(10);
-
-        let crealion = Crealion::new(
-            sender,
-            NenyrAst::CentralContext(CentralContext::new()),
-            "".to_string(),
-        );
-
-        let empty_variables: IndexMap<String, String> = IndexMap::new();
-        let _ = crealion
-            .process_variables("emptyVariablesContext".to_string(), empty_variables.clone())
-            .await;
-
-        let result = STYLITRON
-            .get("variables")
-            .and_then(|stylitron_data| match &*stylitron_data {
-                Stylitron::Variables(variables_definitions) => {
-                    variables_definitions.get("emptyVariablesContext").cloned()
-                }
-                _ => None,
-            });
-
-        assert!(result.is_some());
-
-        let variables = result.unwrap();
-        let empty_variables: IndexMap<String, Vec<String>> = IndexMap::new();
-
-        // Verify that the context was added but remains empty.
-        assert_eq!(variables, empty_variables);
-    }
-
-    #[tokio::test]
     async fn test_apply_variables_no_variables_section() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 

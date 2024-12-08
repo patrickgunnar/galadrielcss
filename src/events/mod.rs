@@ -6,7 +6,6 @@ use crate::error::GaladrielError;
 #[derive(Clone, PartialEq, Debug)]
 pub enum GaladrielEvents {
     Error(GaladrielError),
-    Notify(GaladrielAlerts),
 }
 
 #[allow(dead_code)]

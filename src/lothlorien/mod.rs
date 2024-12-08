@@ -1,20 +1,22 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, net::SocketAddr, path::PathBuf};
 
-use chrono::Local;
+use chrono::{DateTime, Local};
 use events::{ClientResponse, ConnectedClientEvents};
-use futures::{SinkExt, StreamExt};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use rand::Rng;
 use request::{ContextType, Request, RequestType, ServerRequest};
 use tokio::{
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::{
         broadcast,
         mpsc::{self, UnboundedReceiver, UnboundedSender},
     },
-    task::JoinHandle,
+    task::{JoinError, JoinHandle},
 };
-use tokio_tungstenite::accept_async;
-use tracing::{debug, error, info, warn};
+use tokio_tungstenite::{accept_async, WebSocketStream};
 use tungstenite::Message;
 
 use crate::{
@@ -25,6 +27,8 @@ use crate::{
 
 pub mod events;
 mod request;
+
+const GALADRIEL_TEMP_FILE_NAME: &str = "galadrielcss_lothlorien_pipeline_port.txt";
 
 /// Represents a pipeline for managing events and connections in the Lothlórien system.
 /// It manages communication through a set of channels and listeners, enabling the processing of events
@@ -42,6 +46,9 @@ pub struct LothlorienPipeline {
     // Receiver for connected client events
     runtime_receiver: broadcast::Receiver<ConnectedClientEvents>,
 
+    /// Broadcast sender for sending alerts (`GaladrielAlerts`).
+    palantir_sender: broadcast::Sender<GaladrielAlerts>,
+
     // The socket address for binding the TCP listener
     socket_addr: String,
     // Temporary folder for storing system-related files
@@ -54,18 +61,20 @@ impl LothlorienPipeline {
     /// # Arguments
     ///
     /// * `port` - The port to use for binding the listener.
+    /// * `palantir_sender`: A broadcast sender for alerts.
     ///
     /// # Returns
     ///
     /// A new `LothlorienPipeline` instance.
-    pub fn new(port: String) -> Self {
+    pub fn new(port: String, palantir_sender: broadcast::Sender<GaladrielAlerts>) -> Self {
         // Create unbounded channels for pipeline and runtime communication
         let (pipeline_sender, pipeline_receiver) = mpsc::unbounded_channel();
         let (runtime_sender, runtime_receiver) = broadcast::channel(2);
 
-        info!("Initializing LothlorienPipeline with port: {}", port);
+        tracing::info!("Initializing LothlorienPipeline with port: {}", port);
 
         Self {
+            palantir_sender,
             pipeline_sender,
             pipeline_receiver,
             runtime_sender,
@@ -83,14 +92,15 @@ impl LothlorienPipeline {
     ///
     /// A result containing either the `TcpListener` instance or an error.
     pub async fn create_listener(&self) -> GaladrielResult<TcpListener> {
-        info!("Attempting to bind to socket address: {}", self.socket_addr);
+        tracing::info!("Attempting to bind to socket address: {}", self.socket_addr);
 
         TcpListener::bind(self.socket_addr.clone())
             .await
             .map_err(|err| {
-                error!(
+                tracing::error!(
                     "Failed to bind to socket address '{}': {:?}",
-                    self.socket_addr, err
+                    self.socket_addr,
+                    err
                 );
 
                 GaladrielError::raise_general_pipeline_error(
@@ -117,26 +127,22 @@ impl LothlorienPipeline {
     ///
     /// A `JoinHandle<()>` that can be used to monitor the spawned task.
     pub fn create_pipeline(&self, listener: TcpListener) -> JoinHandle<()> {
-        // Clone the pipeline and runtime senders to be used inside the spawned task
-        let _sender = self.pipeline_sender.clone();
-        let _runtime_sender = self.runtime_sender.clone();
+        // Clone the pipeline, palantir and runtime senders to be used inside the spawned task
+        let pipeline_sender = self.pipeline_sender.clone();
+        let runtime_sender = self.runtime_sender.clone();
+        let palantir_sender = self.palantir_sender.clone();
 
-        let start_time = Local::now();
-        let ending_time = Local::now();
-        let duration = ending_time - start_time;
+        // Subscribe the palantir and runtime sender
+        let mut runtime_receiver = runtime_sender.subscribe();
+        let mut palantir_receiver = palantir_sender.subscribe();
 
-        let notification = GaladrielAlerts::create_success(
-            start_time,
-            ending_time,
-            duration,
-            &random_server_subheading_message(),
+        Self::send_palantir_success_notification(
+            &Self::random_server_subheading_message(),
+            Local::now(),
+            palantir_sender.clone(),
         );
 
-        if let Err(err) = _sender.send(GaladrielEvents::Notify(notification)) {
-            error!("Failed to send the server's header message to the main runtime. Error details: {:?}", err);
-        }
-
-        info!("Starting pipeline listener. Awaiting client connections...");
+        tracing::info!("Starting pipeline listener. Awaiting client connections...");
 
         // Spawn a new asynchronous task to handle incoming connections
         tokio::spawn(async move {
@@ -144,90 +150,139 @@ impl LothlorienPipeline {
             loop {
                 tokio::select! {
                     // If the pipeline sender is closed, log a warning and gracefully exit
-                    _ = _sender.closed() => {
-                        warn!("Pipeline sender has been closed. Shutting down listener gracefully.");
-
+                    _ = pipeline_sender.closed() => {
+                       tracing::warn!("Pipeline sender has been closed. Shutting down listener gracefully.");
+                        break;
+                    }
+                    // If the runtime sender is closed, log a warning and gracefully exit
+                    Err(broadcast::error::RecvError::Closed) = runtime_receiver.recv() => {
+                       tracing::warn!("Runtime sender has been closed. Shutting down listener gracefully.");
+                        break;
+                    }
+                    // Exit the loop if the Palantir receiver is closed.
+                    Err(broadcast::error::RecvError::Closed) = palantir_receiver.recv() => {
+                        tracing::info!("Palantir sender has been closed. Shutting down listener gracefully.");
                         break;
                     }
                     // Continuously accept incoming client connections
                     connection = listener.accept() => {
-                        match connection {
-                            // If connection is successfully accepted, spawn a new task to handle the stream
-                            Ok((stream, _)) => {
-                                info!("Accepted new connection from client.");
-
-                                let _pipeline_sender = _sender.clone();
-                                let _runtime_sender = _runtime_sender.clone();
-
-                                // Spawn a new task to handle the client stream
-                                let result = tokio::spawn(async move {
-                                    Self::stream_sync(stream, _pipeline_sender, _runtime_sender).await
-                                }).await;
-
-                                // Handle the result of the stream handling task
-                                match result {
-                                    // If the stream is handled successfully, log the success
-                                    Ok(Ok(_)) => {
-                                        info!("Connection handled successfully.");
-
-                                        let notification = GaladrielAlerts::create_information(
-                                            Local::now(),
-                                            "Client has successfully disconnected from the Galadriel CSS server. No further events will be sent to this client."
-                                        );
-
-                                        if let Err(err) = _sender.send(GaladrielEvents::Notify(notification)) {
-                                            error!(
-                                                "Failed to send client disconnection notification to the main runtime. Error details: {:?}",
-                                                err
-                                            );
-                                        }
-                                    }
-                                    // If an error occurs while processing the connection, log the error
-                                    Ok(Err(err)) => {
-                                        error!("Error occurred while processing client connection: {:?}", err);
-
-                                        // Send an error notification to the pipeline sender
-                                        if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
-                                            error!("Failed to notify the main runtime about error: {:?}", err);
-                                        }
-                                    }
-                                    // If an unexpected error occurs, log the error and notify the pipeline
-                                    Err(err) => {
-                                        let err = GaladrielError::raise_general_pipeline_error(
-                                            ErrorKind::ConnectionTerminationError,
-                                            &err.to_string(),
-                                            ErrorAction::Notify
-                                        );
-
-                                        error!("Unexpected error in handling connection: {:?}", err);
-
-                                        // Send an error notification to the pipeline sender
-                                        if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
-                                            error!("Failed to notify the main runtime about error: {:?}", err);
-                                        }
-                                    }
-                                }
-                            }
-                            // If an error occurs while accepting the connection, log the error and notify the pipeline
-                            Err(err) => {
-                                let err = GaladrielError::raise_general_pipeline_error(
-                                    ErrorKind::ConnectionInitializationError,
-                                    &err.to_string(),
-                                    ErrorAction::Notify
-                                );
-
-                                error!("Failed to accept incoming client connection: {:?}", err);
-
-                                // Send an error notification to the pipeline sender
-                                if let Err(err) = _sender.send(GaladrielEvents::Error(err)) {
-                                    error!("Failed to notify the main runtime about error: {:?}", err);
-                                }
-                            }
-                        }
+                        Self::handle_client_connection(
+                            pipeline_sender.clone(),
+                            palantir_sender.clone(),
+                            runtime_sender.clone(),
+                            connection
+                        )
+                        .await;
                     }
                 }
             }
         })
+    }
+
+    /// Handles an incoming client connection, either establishing communication
+    /// or handling connection errors appropriately.
+    ///
+    /// # Parameters
+    /// - `pipeline_sender`: An `UnboundedSender` used to send events to the pipeline.
+    /// - `palantir_sender`: A `broadcast::Sender` used to send alerts to monitoring systems.
+    /// - `runtime_sender`: A `broadcast::Sender` used to communicate client events to the runtime.
+    /// - `connection`: A `Result` containing either the successfully accepted client connection
+    ///   (`(TcpStream, SocketAddr)`) or an error (`std::io::Error`).
+    async fn handle_client_connection(
+        pipeline_sender: UnboundedSender<GaladrielEvents>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        runtime_sender: broadcast::Sender<ConnectedClientEvents>,
+        connection: Result<(TcpStream, SocketAddr), std::io::Error>,
+    ) {
+        match connection {
+            // If connection is successfully accepted, spawn a new task to handle the stream
+            Ok((stream, _)) => {
+                tracing::info!("Accepted new connection from client.");
+
+                let palantir_tx = palantir_sender.clone();
+
+                // Spawn a new task to handle the client stream
+                let stream_sync_result = tokio::spawn(async move {
+                    Self::stream_sync(stream, pipeline_sender, palantir_tx, runtime_sender).await
+                })
+                .await;
+
+                // Handle the result of the stream handling task
+                Self::handle_stream_sync_result(palantir_sender.clone(), stream_sync_result);
+            }
+            // If an error occurs while accepting the connection, log the error and notify the pipeline
+            Err(err) => {
+                let error = GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::ConnectionInitializationError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                );
+
+                tracing::error!("Failed to accept incoming client connection: {:?}", error);
+
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
+            }
+        }
+    }
+
+    /// Handles the result of a client stream synchronization process.
+    ///
+    /// # Parameters
+    /// - `palantir_sender`: A `broadcast::Sender` used to send alerts or notifications to the monitoring system.
+    /// - `stream_sync_result`: A nested `Result` where:
+    ///   - The outer `Result` indicates whether the task completed successfully or encountered a `JoinError`.
+    ///   - The inner `Result` indicates the success or failure of the stream handling process (`GaladrielError`).
+    fn handle_stream_sync_result(
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        stream_sync_result: Result<Result<(), GaladrielError>, JoinError>,
+    ) {
+        match stream_sync_result {
+            // If the stream is handled successfully, log the success
+            Ok(Ok(_)) => {
+                tracing::info!("Connection handled successfully.");
+
+                Self::send_palantir_success_notification(
+                    "Client has successfully disconnected from the Galadriel CSS server. No further events will be sent to this client.",
+                    Local::now(),
+                    palantir_sender.clone()
+                );
+            }
+            // If an error occurs while processing the connection, log the error
+            Ok(Err(error)) => {
+                tracing::error!(
+                    "Error occurred while processing client connection: {:?}",
+                    error
+                );
+
+                // Send an error notification to the pipeline sender
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
+            }
+            // If an unexpected error occurs, log the error and notify the pipeline
+            Err(err) => {
+                let error = GaladrielError::raise_general_pipeline_error(
+                    ErrorKind::ConnectionTerminationError,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                );
+
+                tracing::error!("Unexpected error in handling connection: {:?}", err);
+
+                // Send an error notification to the pipeline sender
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
+            }
+        }
     }
 
     /// Receives the next event from the pipeline receiver.
@@ -237,7 +292,7 @@ impl LothlorienPipeline {
     /// A result containing either the received event or an error.
     pub async fn next(&mut self) -> GaladrielResult<GaladrielEvents> {
         self.pipeline_receiver.recv().await.ok_or_else(|| {
-            error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
+           tracing::error!("Failed to receive Lothlórien pipeline event: Channel closed unexpectedly or an IO error occurred");
 
             GaladrielError::raise_general_pipeline_error(
                 ErrorKind::ServerEventReceiveFailed,
@@ -253,7 +308,7 @@ impl LothlorienPipeline {
     ///
     /// The `broadcast::Sender<ConnectedClientEvents>` for sending events.
     pub fn get_runtime_sender(&self) -> broadcast::Sender<ConnectedClientEvents> {
-        info!("Retrieving runtime sender.");
+        tracing::info!("Retrieving runtime sender.");
         self.runtime_sender.clone()
     }
 
@@ -269,9 +324,7 @@ impl LothlorienPipeline {
     pub fn register_server_port_in_temp(&self, port: u16) -> GaladrielResult<()> {
         use std::io::Write;
 
-        let systems_temp_file = self
-            .systems_temp_folder
-            .join("galadrielcss_lothlorien_pipeline_port.txt");
+        let systems_temp_file = self.systems_temp_folder.join(GALADRIEL_TEMP_FILE_NAME);
 
         let mut file = fs::File::create(&systems_temp_file).map_err(|err| {
             GaladrielError::raise_general_pipeline_error(
@@ -281,9 +334,10 @@ impl LothlorienPipeline {
             )
         })?;
 
-        info!(
+        tracing::info!(
             "Registering server port {} in temporary file: {:?}",
-            port, systems_temp_file
+            port,
+            systems_temp_file
         );
 
         write!(file, "{}", port).map_err(|err| {
@@ -303,12 +357,10 @@ impl LothlorienPipeline {
     ///
     /// A result indicating success or failure.
     pub fn remove_server_port_in_temp(&self) -> GaladrielResult<()> {
-        let systems_temp_file = self
-            .systems_temp_folder
-            .join("galadrielcss_lothlorien_pipeline_port.txt");
+        let systems_temp_file = self.systems_temp_folder.join(GALADRIEL_TEMP_FILE_NAME);
 
         if systems_temp_file.exists() {
-            info!(
+            tracing::info!(
                 "Removing server port registration file: {:?}",
                 systems_temp_file
             );
@@ -321,7 +373,7 @@ impl LothlorienPipeline {
                 )
             })?;
         } else {
-            warn!(
+            tracing::warn!(
                 "Server port registration file does not exist: {:?}",
                 systems_temp_file
             );
@@ -351,98 +403,98 @@ impl LothlorienPipeline {
     async fn stream_sync(
         stream: tokio::net::TcpStream,
         pipeline_sender: UnboundedSender<GaladrielEvents>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
         runtime_sender: broadcast::Sender<ConnectedClientEvents>,
     ) -> GaladrielResult<()> {
         // Establishes a WebSocket connection and splits it into sender and receiver components.
-        let (mut stream_sender, mut stream_receiver) = accept_async(stream)
-            .await
-            .map_err(|err| {
-                error!(
-                    "Failed to establish WebSocket connection with client stream: {:?}",
-                    err
-                );
-
-                GaladrielError::raise_critical_pipeline_error(
-                    ErrorKind::ServerSyncAcceptFailed,
-                    &err.to_string(),
-                    ErrorAction::Notify,
-                )
-            })?
-            .split();
+        let (mut stream_sender, mut stream_receiver) = Self::accept_sync(stream).await?.split();
 
         // Subscribes to the runtime sender to receive events.
         let mut runtime_receiver = runtime_sender.subscribe();
-        let message = "Galadriel CSS server is ready! 🚀\n\nYou can start styling your project with Galadriel CSS and see instant updates as changes are made.\n\nHappy coding, and may your styles be ever beautiful!";
+        let mut palantir_receiver = palantir_sender.subscribe();
 
-        info!("Successfully established WebSocket connection. Sending initial greeting message to client.");
+        // Send initial message to the connected client.
+        Self::send_server_notification_to_client(
+            "Galadriel CSS server is ready! 🚀\n\nYou can start styling your project with Galadriel CSS and see instant updates as changes are made.\n\nHappy coding, and may your styles be ever beautiful!",
+            palantir_sender.clone(),
+            &mut stream_sender
+        ).await;
 
-        // Sends the initial greeting message to the client and handles any errors during the send operation.
-        stream_sender
-            .send(Message::Text(message.to_string()))
-            .await
-            .map_err(|err| {
-                error!(
-                    "Failed to send initial greeting to client. Error: {:?}",
-                    err
-                );
-
-                GaladrielError::raise_general_pipeline_error(
-                    ErrorKind::NotificationSendError,
-                    &format!("Initial message send failed: {}", err.to_string()),
-                    ErrorAction::Notify,
-                )
-            })?;
-
-        let notification = GaladrielAlerts::create_information(
+        // Send successful connection message to the client.
+        Self::send_palantir_success_notification(
+            "A new client has successfully connected to the Galadriel server and is now ready to request and receive events.",
             Local::now(),
-            "A new client has successfully connected to the Galadriel server and is now ready to request and receive events."
+            palantir_sender.clone()
         );
 
-        if let Err(err) = pipeline_sender.send(GaladrielEvents::Notify(notification)) {
-            error!(
-                "Failed to send client connection notification to main runtime. Error details: {:?}",
-                err
-            );
-        }
+        tracing::info!("Successfully established WebSocket connection. Sending initial greeting message to client.");
 
+        // Observer the integration client connection.
+        Self::process_stream_sync_watch(
+            pipeline_sender,
+            palantir_sender,
+            &mut palantir_receiver,
+            &mut stream_receiver,
+            &mut runtime_receiver,
+            &mut stream_sender,
+        )
+        .await
+    }
+
+    /// Processes the stream synchronization watch, continuously monitoring and handling
+    /// messages between the server and client through WebSocket communication.
+    ///
+    /// # Parameters
+    /// - `pipeline_sender`: An `UnboundedSender` to send events to the pipeline.
+    /// - `palantir_sender`: A `broadcast::Sender` used for sending alerts to the monitoring system.
+    /// - `palantir_receiver`: A mutable reference to a `broadcast::Receiver` that receives close event from the monitoring system.
+    /// - `stream_receiver`: A mutable reference to the `SplitStream` of the WebSocket connection, used to receive messages from the client.
+    /// - `runtime_receiver`: A mutable reference to a `broadcast::Receiver` that listens for runtime events.
+    /// - `stream_sender`: A mutable reference to the `SplitSink` of the WebSocket connection, used to send messages to the client.
+    ///
+    /// # Returns
+    /// - `GaladrielResult<()>`: Returns `Ok(())` on successful execution or an error encapsulated in `GaladrielResult`.
+    async fn process_stream_sync_watch(
+        pipeline_sender: UnboundedSender<GaladrielEvents>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        palantir_receiver: &mut broadcast::Receiver<GaladrielAlerts>,
+        stream_receiver: &mut SplitStream<WebSocketStream<TcpStream>>,
+        runtime_receiver: &mut broadcast::Receiver<ConnectedClientEvents>,
+        stream_sender: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
+    ) -> GaladrielResult<()> {
         loop {
             tokio::select! {
                 // If the pipeline sender is closed, the loop terminates gracefully.
                 _ = pipeline_sender.closed() => {
-                    warn!("Pipeline sender has been closed. Closing the stream synchronization process.");
-
+                   tracing::warn!("Pipeline sender has been closed. Closing the stream synchronization process.");
+                    break;
+                }
+                // Exit the loop if the Palantir receiver is closed.
+                Err(broadcast::error::RecvError::Closed) = palantir_receiver.recv() => {
+                    tracing::info!("Palantir sender has been closed. Shutting down listener gracefully.");
                     break;
                 }
                 // Receives events from the runtime system.
-                _runtime_res = runtime_receiver.recv() => {}
+                runtime_response = runtime_receiver.recv() => {
+                    // If the runtime sender is closed, log a warning and gracefully exit
+                    if let Err(broadcast::error::RecvError::Closed) = runtime_response {
+                       tracing::warn!("Runtime sender has been closed. Shutting down listener gracefully.");
+                        break;
+                    }
+                }
                 // Receives events from the connected integration client.
                 client_response = stream_receiver.next() => {
-                    match Self::handle_stream_response(&client_response, pipeline_sender.clone()) {
+                    match Self::handle_stream_response(palantir_sender.clone(), &client_response) {
                         ClientResponse::Break  => {
                             break;
                         }
                         ClientResponse::Text(data) => {
-                            if let Err(err) = stream_sender.send(Message::Text(data)).await {
-                                let err = GaladrielError::raise_general_pipeline_error(
-                                    ErrorKind::NotificationSendError,
-                                    &err.to_string(),
-                                    ErrorAction::Notify
-                                );
-
-                                error!(
-                                    "Failed to send data to the connected client. Original error: {:?}",
-                                    err
-                                );
-
-                                let notification = GaladrielAlerts::create_galadriel_error(Local::now(), err);
-
-                                if let Err(err) = pipeline_sender.send(GaladrielEvents::Notify(notification)) {
-                                    error!(
-                                        "Failed to send error notification to the main runtime. Error: {:?}",
-                                        err
-                                    );
-                                }
-                            }
+                            Self::send_server_notification_to_client(
+                                &data,
+                                palantir_sender.clone(),
+                                stream_sender
+                            )
+                            .await;
                         }
                         _ => {}
                     }
@@ -453,72 +505,154 @@ impl LothlorienPipeline {
         Ok(())
     }
 
+    /// Accepts an incoming TCP stream and upgrades it to a WebSocket connection.
+    ///
+    /// # Parameters
+    /// - `stream`: The incoming TCP stream to be upgraded.
+    ///
+    /// # Returns
+    /// - `GaladrielResult<WebSocketStream<tokio::net::TcpStream>>`: Returns the WebSocket stream on success
+    ///   or an error wrapped in `GaladrielResult` on failure.
+    async fn accept_sync(
+        stream: tokio::net::TcpStream,
+    ) -> GaladrielResult<WebSocketStream<tokio::net::TcpStream>> {
+        // Establishes a WebSocket connection.
+        accept_async(stream).await.map_err(|err| {
+            tracing::error!(
+                "Failed to establish WebSocket connection with client stream: {:?}",
+                err
+            );
+
+            GaladrielError::raise_critical_pipeline_error(
+                ErrorKind::ServerSyncAcceptFailed,
+                &err.to_string(),
+                ErrorAction::Notify,
+            )
+        })
+    }
+
+    /// Sends a notification message to the connected client.
+    ///
+    /// # Parameters
+    /// - `message`: The message string to be sent to the client.
+    /// - `palantir_sender`: A broadcast sender used for sending alerts.
+    /// - `stream_sender`: A mutable reference to the WebSocket stream's sink for sending messages.
+    async fn send_server_notification_to_client(
+        message: &str,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        stream_sender: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
+    ) {
+        // Sends message to the client and handles any errors during the send operation.
+        if let Err(err) = stream_sender.send(Message::Text(message.to_string())).await {
+            tracing::error!(
+                "Failed to send notification to connected client. Error: {:?}",
+                err
+            );
+
+            let error = GaladrielError::raise_general_pipeline_error(
+                ErrorKind::NotificationSendError,
+                &format!(
+                    "Failed to send notification to connected client. Error: {}",
+                    err.to_string()
+                ),
+                ErrorAction::Notify,
+            );
+
+            Self::send_palantir_error_notification(error, Local::now(), palantir_sender.clone());
+        }
+    }
+
+    /// Handles responses received from the client via WebSocket.
+    ///
+    /// # Parameters
+    /// - `palantir_sender`: A broadcast sender for sending alerts.
+    /// - `client_response`: An optional result containing the client's message or an error.
+    ///
+    /// # Returns
+    /// - `ClientResponse`: Represents the outcome of processing the client's response.
     fn handle_stream_response(
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
         client_response: &Option<Result<Message, tungstenite::Error>>,
-        pipeline_sender: UnboundedSender<GaladrielEvents>,
     ) -> ClientResponse {
         match client_response {
+            // Successfully received a message from the client.
+            Some(Ok(event)) => {
+                tracing::info!("Received event from client: {:?}", event);
+
+                // Processes the received event and handles the associated request.
+                Self::process_stream_event(event, palantir_sender.clone())
+            }
             // If no more data is received, the client has disconnected.
             None => {
-                info!("Client has disconnected. Terminating stream synchronization.");
+                tracing::info!("Client has disconnected. Terminating stream synchronization.");
 
                 return ClientResponse::Break;
             }
             // If an error occurs while receiving the client's message, handle it.
             Some(Err(err)) => {
-                error!(
+                tracing::error!(
                     "Error receiving message from client: {:?}. Disconnecting client.",
                     err
                 );
 
                 // Raises a general pipeline error and notifies the runtime of the error.
-                let err = GaladrielError::raise_general_pipeline_error(
+                let error = GaladrielError::raise_general_pipeline_error(
                     ErrorKind::ClientResponseError,
                     &err.to_string(),
                     ErrorAction::Notify,
                 );
 
-                if let Err(err) = pipeline_sender.send(GaladrielEvents::Error(err)) {
-                    error!("Failed to notify runtime of error: {:?}", err);
-                }
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
 
                 return ClientResponse::Break;
             }
-            // Successfully received a message from the client.
-            Some(Ok(event)) => {
-                info!("Received event from client: {:?}", event);
+        }
+    }
 
-                // Processes the received event and handles the associated request.
-                match Self::process_response(event) {
-                    Ok(ServerRequest { request, .. }) if request == Request::BreakConnection => {
-                        return ClientResponse::Break;
-                    }
-                    Ok(request) => {
-                        // Handles the processed request and sends notifications to the runtime.
-                        let data = Self::process_request(request);
+    /// Processes a received WebSocket event and handles associated client requests.
+    ///
+    /// # Parameters
+    /// - `event`: The WebSocket message received from the client.
+    /// - `palantir_sender`: A broadcast sender for sending alerts.
+    ///
+    /// # Returns
+    /// - `ClientResponse`: Represents the outcome of processing the event.
+    fn process_stream_event(
+        event: &Message,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+    ) -> ClientResponse {
+        // Processes the received stream event and handles the associated request.
+        match Self::process_response(event) {
+            Ok(ServerRequest { request, .. }) if request == Request::BreakConnection => {
+                return ClientResponse::Break;
+            }
+            Ok(request) => {
+                // Handles the processed request and sends notifications to the runtime.
+                let data = Self::process_request(request);
 
-                        info!("Successfully processed request: {:?}", data);
+                tracing::info!("Successfully processed request: {:?}", data);
 
-                        return ClientResponse::Text(data);
-                    }
-                    // Handles errors while processing the response.
-                    Err(err) => {
-                        error!(
-                            "An error occurred while processing the client's request: {:?}",
-                            err
-                        );
+                return ClientResponse::Text(data);
+            }
+            // Handles errors while processing the response.
+            Err(error) => {
+                tracing::error!(
+                    "An error occurred while processing the client's request: {:?}",
+                    error
+                );
 
-                        // Notifies the runtime of the error during request processing.
-                        if let Err(err) = pipeline_sender.send(GaladrielEvents::Error(err)) {
-                            error!(
-                                "Failed to notify runtime of error during request processing: {:?}",
-                                err
-                            );
-                        }
+                // Notifies the runtime of the error during request processing.
+                Self::send_palantir_error_notification(
+                    error,
+                    Local::now(),
+                    palantir_sender.clone(),
+                );
 
-                        return ClientResponse::Continue;
-                    }
-                }
+                return ClientResponse::Continue;
             }
         }
     }
@@ -534,60 +668,8 @@ impl LothlorienPipeline {
     fn process_response(event: &Message) -> GaladrielResult<ServerRequest> {
         // Check if the message is of type `Message::Text`
         match event {
-            Message::Text(response) => {
-                // Split the response string by semicolon and collect into a vector of strings
-                let tokens: Vec<String> = response.split(";").map(|v| v.to_owned()).collect();
-
-                // Ensure there are at least two tokens: `request type` and `client name`
-                if tokens.len() < 2 {
-                    error!("Invalid request format: Expected at least 2 tokens but received fewer. Tokens: {:?}", tokens);
-
-                    // Return an error with detailed explanation if fewer than 2 tokens are provided
-                    return Err(GaladrielError::raise_general_pipeline_error(
-                        ErrorKind::MissingRequestTokens,
-                        "Invalid request format: Expected at least 2 tokens but received fewer. Please provide both a `request type` and a `client name`, separated by a semicolon `;`. For example: `fetch-updated-css;Client Name`.",
-                        ErrorAction::Ignore,
-                    ));
-                }
-
-                debug!("Processing request with tokens: {:?}", tokens);
-
-                // Extract the `request type` and `client name` from the tokens
-                let request_type = Self::get_request_type(&tokens[0])?;
-                let client_name = tokens[1].clone();
-
-                // Handle different types of requests based on the `request_type`
-                match request_type {
-                    RequestType::FetchUpdatedCSS => {
-                        debug!("Request type: FetchUpdatedCSS");
-
-                        // Return a request to fetch updated CSS for the given client
-                        return Ok(ServerRequest::new(client_name, Request::FetchUpdatedCSS));
-                    }
-                    RequestType::CollectClassList => {
-                        // If the request type is `CollectClassList`, ensure there are at least 3 tokens
-                        if tokens.len() < 3 {
-                            error!("Collect class list request requires an additional token for class details. Tokens: {:?}", tokens);
-
-                            // Return an error if the class token is missing
-                            return Err(GaladrielError::raise_general_pipeline_error(
-                                ErrorKind::MissingRequestTokens,
-                                "Collect class list request requires an additional token for class details. Ensure at least 3 tokens are present.",
-                                ErrorAction::Ignore,
-                            ));
-                        }
-
-                        let class_token = tokens[2].clone();
-
-                        debug!(
-                            "Request type: CollectClassList with class token: {}",
-                            class_token
-                        );
-
-                        // Call a separate function to handle the class list request
-                        return Self::build_collect_class_list_request(class_token, client_name);
-                    }
-                }
+            Message::Text(text_response) => {
+                return Self::process_text_response(text_response);
             }
             Message::Close(_) => {
                 return Ok(ServerRequest::new("".to_string(), Request::BreakConnection));
@@ -595,14 +677,72 @@ impl LothlorienPipeline {
             _ => {}
         }
 
-        error!("Unsupported message format received. Only `Message::Text` is supported for processing.");
+        tracing::error!("Unsupported message format received from integration client. Only `Message::Text` is supported for processing.");
 
         // Return an error for unsupported message types
         Err(GaladrielError::raise_general_pipeline_error(
             ErrorKind::UnsupportedRequestToken,
-            "Unsupported message format received. Only `Message::Text` is supported for processing.",
+            "Unsupported message format received from integration client. Only `Message::Text` is supported for processing.",
             ErrorAction::Ignore,
         ))
+    }
+
+    /// Processes a textual response from the client and converts it into a server request.
+    ///
+    /// # Parameters
+    /// - `text_response`: A string slice containing the client's response.
+    ///
+    /// # Returns
+    /// - `GaladrielResult<ServerRequest>`: A server request object if parsing and validation succeed,
+    ///   or an error wrapped in `GaladrielResult` if any validation fails.
+    fn process_text_response(text_response: &str) -> GaladrielResult<ServerRequest> {
+        // Split the response string by semicolon and collect into a vector of strings
+        let tokens: Vec<String> = text_response.split(";").map(|v| v.to_owned()).collect();
+
+        // Ensure there are at least two tokens: `request type` and `client name`
+        Self::token_less_than(
+            2,
+            &tokens,
+            ErrorKind::MissingRequestTokens,
+            ErrorAction::Ignore,
+            "The integration client submitted an invalid request format: Expected at least 2 tokens but received fewer. Please provide both a `request type` and a `client name`, separated by a semicolon (`;`). For example: `fetch-updated-css;Client Name`.",
+        )?;
+
+        tracing::debug!("Processing request with tokens: {:?}", tokens);
+
+        // Extract the `request type` and `client name` from the tokens
+        let request_type = Self::get_request_type(&tokens[0])?;
+        let client_name = tokens[1].clone();
+
+        // Handle different types of requests based on the `request_type`
+        match request_type {
+            RequestType::FetchUpdatedCSS => {
+                tracing::debug!("Request type: FetchUpdatedCSS");
+
+                // Return a request to fetch updated CSS for the given client
+                return Ok(ServerRequest::new(client_name, Request::FetchUpdatedCSS));
+            }
+            RequestType::CollectClassList => {
+                // If the request type is `CollectClassList`, ensure there are at least 3 tokens
+                Self::token_less_than(
+                    3,
+                    &tokens,
+                    ErrorKind::MissingRequestTokens,
+                    ErrorAction::Ignore,
+                    "The integration client submitted a 'collect-class-list' request missing an additional token for class details. Ensure at least 3 tokens are present.",
+                )?;
+
+                let class_token = tokens[2].clone();
+
+                tracing::debug!(
+                    "Request type: CollectClassList with class token: {}",
+                    class_token
+                );
+
+                // Call a separate function to handle the class list request
+                return Self::build_collect_class_list_request(class_token, client_name);
+            }
+        }
     }
 
     /// Builds a `ServerRequest` for collecting a class list based on the provided class token and client name.
@@ -621,18 +761,15 @@ impl LothlorienPipeline {
         let target_class: Vec<String> = class_token.split(":").map(|v| v.to_owned()).collect();
 
         // Ensure there are at least two tokens in the class token: `context_type` and `class_name`
-        if target_class.len() < 2 {
-            error!("Invalid class token format: Expected at least 2 tokens but received fewer. Token: {}", class_token);
+        Self::token_less_than(
+            2,
+            &target_class,
+            ErrorKind::MissingRequestTokens,
+            ErrorAction::Ignore,
+            "The integration client submitted a request with an invalid class token format. Expected at least 2 tokens but received fewer. Provide both a `context type` and a `class name`, separated by a colon (`:`).",
+        )?;
 
-            // Return an error if the class token format is invalid
-            return Err(GaladrielError::raise_general_pipeline_error(
-                ErrorKind::MissingRequestTokens,
-                "Invalid class token format: Expected at least 2 tokens but received fewer. Provide both a `context type` and a `class name`, separated by a colon `:`.",
-                ErrorAction::Ignore,
-            ));
-        }
-
-        debug!(
+        tracing::debug!(
             "Building collect class list request with target class: {:?}",
             target_class
         );
@@ -647,31 +784,30 @@ impl LothlorienPipeline {
                 let class_name = target_class[1].clone();
                 let request = Request::new_class_list_request(context_type, None, class_name);
 
-                debug!("Context type: Central");
+                tracing::debug!("Context type: Central");
 
                 // Return the request for the Central context
                 return Ok(ServerRequest::new(client_name, request));
             }
             _ => {
                 // For non-Central contexts, ensure there are at least 3 tokens: `context_type`, `context_name`, and `class_name`
-                if target_class.len() < 3 {
-                    error!("Invalid format for non-Central context: Expected `context type`, `context name`, and `class name`, separated by colons `:`. Tokens: {:?}", target_class);
-
-                    // Return an error if the format is invalid for non-Central contexts
-                    return Err(GaladrielError::raise_general_pipeline_error(
-                        ErrorKind::MissingRequestTokens,
-                        "Invalid format for non-Central context: Expected `context type`, `context name`, and `class name`, separated by colons `:`. Ensure at least 3 tokens are provided.",
-                        ErrorAction::Ignore,
-                    ));
-                }
+                Self::token_less_than(
+                    3,
+                    &target_class,
+                    ErrorKind::MissingRequestTokens,
+                    ErrorAction::Ignore,
+                    "The integration client submitted a request in an invalid format for a non-Central context. Expected format: `context type`, `context name`, and `class name`, separated by colons (`:`). Ensure the request contains at least three tokens in the correct format.",
+                )?;
 
                 // Extract the `context_name` and `class_name` for non-Central contexts
                 let context_name = target_class[1].clone();
                 let class_name = target_class[2].clone();
 
-                debug!(
+                tracing::debug!(
                     "Context type: {:?}, context name: {}, class name: {}",
-                    context_type, context_name, class_name
+                    context_type,
+                    context_name,
+                    class_name
                 );
 
                 // Build and return the request for non-Central contexts
@@ -681,6 +817,38 @@ impl LothlorienPipeline {
                 return Ok(ServerRequest::new(client_name, request));
             }
         }
+    }
+
+    /// Validates that the number of tokens is not less than the specified threshold.
+    ///
+    /// # Parameters
+    /// - `less_than`: The minimum required number of tokens.
+    /// - `tokens`: A vector containing the tokens to validate.
+    /// - `error_kind`: The kind of error to raise if the validation fails.
+    /// - `error_action`: The action to take if the validation fails.
+    /// - `error_message`: A detailed message explaining the validation failure.
+    ///
+    /// # Returns
+    /// - `GaladrielResult<()>`: An `Ok` result if validation passes, or an error if validation fails.
+    fn token_less_than(
+        less_than: usize,
+        tokens: &Vec<String>,
+        error_kind: ErrorKind,
+        error_action: ErrorAction,
+        error_message: &str,
+    ) -> GaladrielResult<()> {
+        if tokens.len() < less_than {
+            tracing::error!("The integration client submitted a request with an invalid format: Expected at least {less_than} tokens but received fewer. Tokens: {:?}", tokens);
+
+            // Return an error with detailed explanation if fewer than `less_than` tokens are provided
+            return Err(GaladrielError::raise_general_pipeline_error(
+                error_kind,
+                error_message,
+                error_action,
+            ));
+        }
+
+        Ok(())
     }
 
     /// Retrieves the request type based on the provided `request_token`.
@@ -701,23 +869,23 @@ impl LothlorienPipeline {
         match request_token {
             // If the token matches "collect-class-list", return `RequestType::CollectClassList`.
             "collect-class-list" => {
-                debug!("Request token: collect-class-list");
+                tracing::debug!("Request token: collect-class-list");
 
                 Ok(RequestType::CollectClassList)
             }
             // If the token matches "fetch-updated-css", return `RequestType::FetchUpdatedCSS`.
             "fetch-updated-css" => {
-                debug!("Request token: fetch-updated-css");
+                tracing::debug!("Request token: fetch-updated-css");
 
                 Ok(RequestType::FetchUpdatedCSS)
             }
             // If the token is neither of the above, log an error and return a pipeline error.
             _ => {
-                error!("Invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token);
+                tracing::error!("The integration client submitted an invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token);
 
                 return Err(GaladrielError::raise_general_pipeline_error(
                     ErrorKind::RequestTokenInvalid,
-                    &format!("Invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token),
+                    &format!("The integration client submitted an invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token),
                     ErrorAction::Ignore,
                 ));
             }
@@ -742,29 +910,29 @@ impl LothlorienPipeline {
         match context_token {
             // If the token matches "@class", return `ContextType::Central`.
             "@class" => {
-                debug!("Context token: @class");
+                tracing::debug!("Context token: @class");
 
                 Ok(ContextType::Central)
             }
             // If the token matches "@layout", return `ContextType::Layout`.
             "@layout" => {
-                debug!("Context token: @layout");
+                tracing::debug!("Context token: @layout");
 
                 Ok(ContextType::Layout)
             }
             // If the token matches "@module", return `ContextType::Module`.
             "@module" => {
-                debug!("Context token: @module");
+                tracing::debug!("Context token: @module");
 
                 Ok(ContextType::Module)
             }
             // If the token is neither of the above, log an error and return a pipeline error.
             _ => {
-                error!("Invalid context token: '{}'. Expected one of '@class', '@layout', or '@module'.", context_token);
+                tracing::error!("The integration client submitted an invalid context token: '{}'. Expected one of '@class', '@layout', or '@module'.", context_token);
 
                 return Err(GaladrielError::raise_general_pipeline_error(
                     ErrorKind::RequestTokenInvalid,
-                    &format!("Invalid context token: '{}'. Expected one of '@class', '@layout', or '@module'.", context_token),
+                    &format!("The integration client submitted an invalid context token: '{}'. Expected one of '@class', '@layout', or '@module'.", context_token),
                     ErrorAction::Ignore,
                 ));
             }
@@ -789,27 +957,91 @@ impl LothlorienPipeline {
 
         "some-data".to_string()
     }
-}
 
-fn random_server_subheading_message() -> String {
-    let messages = [
-        "The light of Eärendil shines. Lothlórien is ready to begin your journey.",
-        "The stars of Lothlórien guide your path. The system is fully operational.",
-        "As the Mallorn trees bloom, Lothlórien is prepared for your commands.",
-        "The Mirror of Galadriel is clear—development is ready to proceed.",
-        "Lothlórien is fully operational and ready for development.",
-    ];
+    /// Sends a success notification to Palantir with details about the operation's duration.
+    ///
+    /// # Parameters
+    /// - `message`: A success message describing the operation.
+    /// - `starting_time`: The timestamp when the operation started.
+    /// - `palantir_sender`: Sender used to broadcast the success notification.
+    fn send_palantir_success_notification(
+        message: &str,
+        starting_time: DateTime<Local>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+    ) {
+        let ending_time = Local::now(); // Record the end time of the operation.
+        let duration = ending_time - starting_time; // Calculate the operation's duration.
 
-    let idx = rand::thread_rng().gen_range(0..messages.len());
-    let selected_message = messages[idx].to_string();
+        tracing::info!(
+            "Operation completed successfully in {:?}, duration: {:?}",
+            ending_time,
+            duration
+        );
 
-    debug!("Selected random subheading message: {}", selected_message);
+        // Create a success notification with timestamps and duration.
+        let notification =
+            GaladrielAlerts::create_success(starting_time, ending_time, duration, message);
 
-    selected_message
+        // Send the success notification.
+        Self::send_palantir_notification(notification, palantir_sender.clone());
+    }
+
+    /// Sends an error notification to Palantir with details about the encountered error.
+    ///
+    /// # Parameters
+    /// - `error`: The error encountered during the operation.
+    /// - `starting_time`: The timestamp when the operation started.
+    /// - `palantir_sender`: Sender used to broadcast the error notification.
+    fn send_palantir_error_notification(
+        error: GaladrielError,
+        starting_time: DateTime<Local>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+    ) {
+        tracing::error!("Error occurred during operation. Details: {:?}", error);
+
+        // Create an error notification with the starting timestamp and error details.
+        let notification = GaladrielAlerts::create_galadriel_error(starting_time, error);
+
+        // Send the error notification.
+        Self::send_palantir_notification(notification, palantir_sender.clone());
+    }
+
+    /// Sends a notification to Palantir. Handles errors if the notification fails to send.
+    ///
+    /// # Parameters
+    /// - `notification`: The notification to be sent.
+    /// - `palantir_sender`: Sender used to broadcast the notification.
+    fn send_palantir_notification(
+        notification: GaladrielAlerts,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+    ) {
+        // Attempt to send the notification. Log an error if it fails.
+        if let Err(err) = palantir_sender.send(notification) {
+            tracing::error!("Failed to send alert: {:?}", err);
+        }
+    }
+
+    fn random_server_subheading_message() -> String {
+        let messages = [
+            "The light of Eärendil shines. Lothlórien is ready to begin your journey.",
+            "The stars of Lothlórien guide your path. The system is fully operational.",
+            "As the Mallorn trees bloom, Lothlórien is prepared for your commands.",
+            "The Mirror of Galadriel is clear—development is ready to proceed.",
+            "Lothlórien is fully operational and ready for development.",
+        ];
+
+        let idx = rand::thread_rng().gen_range(0..messages.len());
+        let selected_message = messages[idx].to_string();
+
+        tracing::debug!("Selected random subheading message: {}", selected_message);
+
+        selected_message
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::broadcast;
     use tungstenite::Message;
 
     use crate::{
@@ -823,7 +1055,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialization() {
-        let pipeline = LothlorienPipeline::new("8080".to_string());
+        let (sender, _) = broadcast::channel(10);
+        let pipeline = LothlorienPipeline::new("8080".to_string(), sender);
 
         // Check if fields are initialized as expected
         assert_eq!(pipeline.socket_addr, "127.0.0.1:8080");
@@ -832,7 +1065,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_server_port_in_temp() {
-        let pipeline = LothlorienPipeline::new("8080".to_string());
+        let (sender, _) = broadcast::channel(10);
+        let pipeline = LothlorienPipeline::new("8080".to_string(), sender);
 
         // Register the server port in the temporary file
         let port = 8080;
@@ -845,7 +1079,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_server_port_in_temp() {
-        let pipeline = LothlorienPipeline::new("8080".to_string());
+        let (sender, _) = broadcast::channel(10);
+        let pipeline = LothlorienPipeline::new("8080".to_string(), sender);
 
         // Check if the file was removed
         assert_eq!(

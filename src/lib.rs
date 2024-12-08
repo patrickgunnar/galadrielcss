@@ -12,7 +12,8 @@ use lothlorien::LothlorienPipeline;
 use palantir::Palantir;
 use ratatui::prelude::CrosstermBackend;
 use shellscape::{
-    app::ShellscapeApp, commands::ShellscapeCommands, ui::ShellscapeInterface, Shellscape,
+    app::ShellscapeApp, commands::ShellscapeCommands, events::ShellscapeTerminalEvents,
+    ui::ShellscapeInterface, Shellscape,
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, net::TcpListener, sync::RwLock};
 use tracing::Level;
@@ -129,7 +130,7 @@ impl GaladrielRuntime {
         let mut shellscape_app = shellscape.create_app(palantir_sender.clone())?; // Application/state setup for Shellscape
 
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
-        let mut pipeline = LothlorienPipeline::new(get_port());
+        let mut pipeline = LothlorienPipeline::new(get_port(), palantir_sender.clone());
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
         let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
@@ -147,26 +148,25 @@ impl GaladrielRuntime {
         interface.invoke()?; // Start the Shellscape terminal interface rendering.
 
         // Transition to development runtime.
-        self.development_runtime(
-            palantir_alerts,
-            &mut pipeline,
-            &mut shellscape,
-            &mut shellscape_app,
-            &mut baraddur_observer,
-            &mut interface,
-        )
-        .await?;
+        let development_runtime_result = self
+            .development_runtime(
+                &mut pipeline,
+                &mut shellscape,
+                &mut shellscape_app,
+                &mut baraddur_observer,
+                &mut interface,
+            )
+            .await;
 
         // Clean up: Remove the temporary server port and abort the interface.
         pipeline.remove_server_port_in_temp()?;
         interface.abort()?;
 
-        Ok(())
+        development_runtime_result
     }
 
     async fn development_runtime(
         &mut self,
-        palantir_alerts: Palantir,
         pipeline: &mut LothlorienPipeline,
         shellscape: &mut Shellscape,
         shellscape_app: &mut ShellscapeApp,
@@ -175,16 +175,15 @@ impl GaladrielRuntime {
     ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
 
+        // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
+
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(shellscape_app) {
-                // TODO: handle the error.
+                tracing::error!("{:?}", err);
 
-                println!("{:?}", err);
+                return Err(err);
             }
-
-            // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
-            // TODO: Implement comprehensive error handling for potential issues here, designing a robust mechanism to manage different error types effectively.
 
             tokio::select! {
                 // Handle events from the Lothlórien pipeline.
@@ -192,29 +191,15 @@ impl GaladrielRuntime {
                     match pipeline_res {
                         // Handle error events from the Lothlórien pipeline and notify the application.
                         Ok(GaladrielEvents::Error(err)) => {
-                            let notification = GaladrielAlerts::create_galadriel_error(
-                                Local::now(),
-                                err,
-                            );
+                            tracing::error!("{:?}", err);
 
-                            palantir_alerts.send_alert(notification);
-
-                            // TODO: handle the error.
-                        }
-                        // Handle notification event from the Lothlórien pipeline.
-                        Ok(GaladrielEvents::Notify(notification)) => {
-                            palantir_alerts.send_alert(notification);
+                            return Err(err);
                         }
                         // Handle errors from the Lothlórien pipeline and notify the application.
                         Err(err) => {
-                            let notification = GaladrielAlerts::create_galadriel_error(
-                                Local::now(),
-                                err,
-                            );
+                            tracing::error!("{:?}", err);
 
-                            palantir_alerts.send_alert(notification);
-
-                            // TODO: handle the error.
+                            return Err(err);
                         }
                     }
                 }
@@ -223,23 +208,16 @@ impl GaladrielRuntime {
                     match baraddur_res {
                         // Handle asynchronous debouncer errors from the observer and notify the application.
                         Ok(GaladrielEvents::Error(err)) => {
-                            palantir_alerts.send_alert(GaladrielAlerts::create_galadriel_error(
-                                Local::now(),
-                                err,
-                            ));
+                            tracing::error!("{:?}", err);
 
-                            // TODO: handle the error.
+                            return Err(err);
                         }
                         // Handle errors from the Barad-dûr observer and notify the application.
                         Err(err) => {
-                            palantir_alerts.send_alert(GaladrielAlerts::create_galadriel_error(
-                                Local::now(),
-                                err,
-                            ));
+                            tracing::error!("{:?}", err);
 
-                            // TODO: handle the error.
+                            return Err(err);
                         }
-                        _ => {}
                     }
                 }
                 // Handle events from the Shellscape terminal interface.
@@ -247,115 +225,16 @@ impl GaladrielRuntime {
                     match shellscape_res {
                         // Handle a valid event from the Shellscape terminal interface.
                         Ok(event) => {
-                            // Match the event to its corresponding Shellscape command.
-                            match shellscape.match_shellscape_event(event) {
-                                // Exit the loop if the terminate command is received.
-                                ShellscapeCommands::Terminate => {
-                                    break;
-                                }
-                                ShellscapeCommands::ScrollNotificationsUp => {
-                                    shellscape_app.reset_alerts_scroll_down();
-                                }
-                                ShellscapeCommands::ScrollNotificationsDown => {
-                                    shellscape_app.reset_alerts_scroll_up();
-                                }
-                                ShellscapeCommands::ScrollDockUp => {
-                                    shellscape_app.reset_dock_scroll_down();
-                                }
-                                ShellscapeCommands::ScrollDockDown => {
-                                    shellscape_app.reset_dock_scroll_up();
-                                }
-                                ShellscapeCommands::ToggleResetStyles => {
-                                    switch_reset_styles();
-
-                                    if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
-                                    }
-                                }
-                                ShellscapeCommands::ToggleMinifiedStyles => {
-                                    switch_minified_styles();
-
-                                    if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
-                                    }
-                                }
-                                ShellscapeCommands::ToggleAutoNaming => {
-                                    switch_auto_naming();
-
-                                    if let Err(err) = self.replace_configurations_file().await {
-                                        shellscape_app.add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
-                                    }
-                                }
-                                ShellscapeCommands::ClearAlertsTable => {
-                                    shellscape_app.clear_alerts();
-                                }
-                                ShellscapeCommands::VewShortcuts => {
-                                    shellscape_app.add_shortcut_alert();
-                                }
-                                ShellscapeCommands::ViewLicense => {
-                                    shellscape_app.add_license_alert();
-                                }
-                                ShellscapeCommands::MakeDonation => {
-                                    shellscape_app.add_donation_alert();
-                                }
-                                ShellscapeCommands::ContributeAsDev => {
-                                    shellscape_app.add_contribute_alert();
-                                }
-                                ShellscapeCommands::AboutAuthor => {
-                                    shellscape_app.add_about_author_alert();
-                                }
-                                ShellscapeCommands::ScrollUp { column, row } => {
-                                    // Get the current areas for the dock and alerts
-                                    let dock_area = shellscape_app.get_dock_area();
-                                    let notify_area = shellscape_app.get_alerts_area();
-
-                                    // Check if the column and row of the event fall within the boundaries of the dock area
-                                    // Check if 'column' is within the dock's left and right boundaries
-                                    // Check if 'row' is within the dock's top and bottom boundaries
-                                    if dock_area.left() <= column && column <= dock_area.right()
-                                        && dock_area.top() <= row && row <= dock_area.bottom() {
-                                        // If the event is within the dock area, reset the scroll for the dock downwards
-                                        shellscape_app.reset_dock_scroll_down();
-
-                                    // Check if the column and row of the event fall within the boundaries of the alerts area
-                                    // Check if 'column' is within the notification's left and right boundaries
-                                    // Check if 'row' is within the notification's top and bottom boundaries
-                                    } else if notify_area.left() <= column && column <= notify_area.right()
-                                        && notify_area.top() <= row && row <= notify_area.bottom() {
-                                        // If the event is within the alerts area, reset the scroll for alerts downwards
-                                        shellscape_app.reset_alerts_scroll_down();
-                                    }
-                                }
-                                ShellscapeCommands::ScrollDown { column, row } => {
-                                    // Get the current areas for the dock and alerts
-                                    let dock_area = shellscape_app.get_dock_area();
-                                    let notify_area = shellscape_app.get_alerts_area();
-
-                                    // Check if the column and row of the event fall within the boundaries of the dock area
-                                    // Check if 'column' is within the dock's left and right boundaries
-                                    // Check if 'row' is within the dock's top and bottom boundaries
-                                    if dock_area.left() <= column && column <= dock_area.right()
-                                        && dock_area.top() <= row && row <= dock_area.bottom() {
-                                        // If the event is within the dock area, reset the scroll for the dock upwards
-                                        shellscape_app.reset_dock_scroll_up();
-
-                                    // Check if the column and row of the event fall within the boundaries of the alerts area
-                                    // Check if 'column' is within the notification's left and right boundaries
-                                    // Check if 'row' is within the notification's top and bottom boundaries
-                                    } else if notify_area.left() <= column && column <= notify_area.right()
-                                        && notify_area.top() <= row && row <= notify_area.bottom() {
-                                        // If the event is within the alerts area, reset the scroll for alerts upwards
-                                        shellscape_app.reset_alerts_scroll_up();
-                                    }
-                                }
-                                _ => {}
+                            // Exit the loop if the terminate command is received.
+                            if let ShellscapeCommands::Terminate = self.handle_shellscape_event(event, shellscape, shellscape_app).await {
+                                break;
                             }
                         }
                         // Handle errors that occur while processing the Shellscape event.
                         Err(err) => {
-                            // TODO: handle the error.
+                            tracing::error!("{:?}", err);
 
-                            println!("{:?}", err);
+                            return Err(err);
                         }
                     }
                 }
@@ -363,6 +242,133 @@ impl GaladrielRuntime {
         }
 
         Ok(())
+    }
+
+    async fn handle_shellscape_event(
+        &mut self,
+        event: ShellscapeTerminalEvents,
+        shellscape: &mut Shellscape,
+        shellscape_app: &mut ShellscapeApp,
+    ) -> ShellscapeCommands {
+        // Match the event to its corresponding Shellscape command.
+        match shellscape.match_shellscape_event(event) {
+            ShellscapeCommands::Terminate => {
+                return ShellscapeCommands::Terminate;
+            }
+            ShellscapeCommands::ScrollNotificationsUp => {
+                shellscape_app.reset_alerts_scroll_down();
+            }
+            ShellscapeCommands::ScrollNotificationsDown => {
+                shellscape_app.reset_alerts_scroll_up();
+            }
+            ShellscapeCommands::ScrollDockUp => {
+                shellscape_app.reset_dock_scroll_down();
+            }
+            ShellscapeCommands::ScrollDockDown => {
+                shellscape_app.reset_dock_scroll_up();
+            }
+            ShellscapeCommands::ToggleResetStyles => {
+                switch_reset_styles();
+
+                if let Err(err) = self.replace_configurations_file().await {
+                    shellscape_app
+                        .add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
+                }
+            }
+            ShellscapeCommands::ToggleMinifiedStyles => {
+                switch_minified_styles();
+
+                if let Err(err) = self.replace_configurations_file().await {
+                    shellscape_app
+                        .add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
+                }
+            }
+            ShellscapeCommands::ToggleAutoNaming => {
+                switch_auto_naming();
+
+                if let Err(err) = self.replace_configurations_file().await {
+                    shellscape_app
+                        .add_alert(GaladrielAlerts::create_galadriel_error(Local::now(), err));
+                }
+            }
+            ShellscapeCommands::ClearAlertsTable => {
+                shellscape_app.clear_alerts();
+            }
+            ShellscapeCommands::VewShortcuts => {
+                shellscape_app.add_shortcut_alert();
+            }
+            ShellscapeCommands::ViewLicense => {
+                shellscape_app.add_license_alert();
+            }
+            ShellscapeCommands::MakeDonation => {
+                shellscape_app.add_donation_alert();
+            }
+            ShellscapeCommands::ContributeAsDev => {
+                shellscape_app.add_contribute_alert();
+            }
+            ShellscapeCommands::AboutAuthor => {
+                shellscape_app.add_about_author_alert();
+            }
+            ShellscapeCommands::ScrollUp { column, row } => {
+                // Get the current areas for the dock and alerts
+                let dock_area = shellscape_app.get_dock_area();
+                let notify_area = shellscape_app.get_alerts_area();
+
+                // Check if the column and row of the event fall within the boundaries of the dock area
+                // Check if 'column' is within the dock's left and right boundaries
+                // Check if 'row' is within the dock's top and bottom boundaries
+                if dock_area.left() <= column
+                    && column <= dock_area.right()
+                    && dock_area.top() <= row
+                    && row <= dock_area.bottom()
+                {
+                    // If the event is within the dock area, reset the scroll for the dock downwards
+                    shellscape_app.reset_dock_scroll_down();
+
+                // Check if the column and row of the event fall within the boundaries of the alerts area
+                // Check if 'column' is within the notification's left and right boundaries
+                // Check if 'row' is within the notification's top and bottom boundaries
+                } else if notify_area.left() <= column
+                    && column <= notify_area.right()
+                    && notify_area.top() <= row
+                    && row <= notify_area.bottom()
+                {
+                    // If the event is within the alerts area, reset the scroll for alerts downwards
+                    shellscape_app.reset_alerts_scroll_down();
+                }
+            }
+            ShellscapeCommands::ScrollDown { column, row } => {
+                // Get the current areas for the dock and alerts
+                let dock_area = shellscape_app.get_dock_area();
+                let notify_area = shellscape_app.get_alerts_area();
+
+                // Check if the column and row of the event fall within the boundaries of the dock area
+                // Check if 'column' is within the dock's left and right boundaries
+                // Check if 'row' is within the dock's top and bottom boundaries
+                if dock_area.left() <= column
+                    && column <= dock_area.right()
+                    && dock_area.top() <= row
+                    && row <= dock_area.bottom()
+                {
+                    // If the event is within the dock area, reset the scroll for the dock upwards
+                    shellscape_app.reset_dock_scroll_up();
+
+                // Check if the column and row of the event fall within the boundaries of the alerts area
+                // Check if 'column' is within the notification's left and right boundaries
+                // Check if 'row' is within the notification's top and bottom boundaries
+                } else if notify_area.left() <= column
+                    && column <= notify_area.right()
+                    && notify_area.top() <= row
+                    && row <= notify_area.bottom()
+                {
+                    // If the event is within the alerts area, reset the scroll for alerts upwards
+                    shellscape_app.reset_alerts_scroll_up();
+                }
+            }
+            _ => {}
+        }
+
+        ShellscapeCommands::None
     }
 
     /// Extracts the local address from a TCP listener, handling any errors encountered.

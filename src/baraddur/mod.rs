@@ -805,7 +805,10 @@ impl Baraddur {
         // Notify Palantir that parsing is starting.
         let notification = GaladrielAlerts::create_information(
             starting_time,
-            &format!("Initiating parsing of: {:?}", stringified_path),
+            &format!(
+                "Starting the parsing process for the specified path: {:?}",
+                stringified_path
+            ),
         );
 
         Self::send_palantir_notification(notification, palantir_sender.clone());
@@ -819,7 +822,7 @@ impl Baraddur {
                 tracing::info!("Successfully parsed Nenyr file: {:?}", stringified_path);
 
                 Self::send_palantir_success_notification(
-                    &format!("Successfully parsed Nenyr file: {:?}", stringified_path),
+                    &format!("The Nenyr file located at {:?} has been successfully parsed and processed without any errors. All relevant data has been extracted and is ready for further operations.", stringified_path),
                     starting_time,
                     palantir_sender.clone(),
                 );
