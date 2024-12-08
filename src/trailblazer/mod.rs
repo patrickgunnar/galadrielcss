@@ -299,3 +299,151 @@ impl Trailblazer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+
+    use crate::{
+        asts::{CLASSINATOR, CLASTRACK},
+        types::{Classinator, Clastrack},
+    };
+
+    use super::Trailblazer;
+
+    fn mock_central_node() {
+        CLASSINATOR.insert(
+            "central".to_string(),
+            Classinator::Central(IndexMap::from([(
+                "_".to_string(),
+                IndexMap::from([(
+                    "myCentralClassName".to_string(),
+                    vec![
+                        "utility-name-one".to_string(),
+                        "utility-name-two".to_string(),
+                        "utility-name-three".to_string(),
+                    ],
+                )]),
+            )])),
+        );
+    }
+
+    fn mock_layouts_node() {
+        CLASSINATOR.insert(
+            "layouts".to_string(),
+            Classinator::Layouts(IndexMap::from([(
+                "myClassinatorLayoutNam".to_string(),
+                IndexMap::from([(
+                    "myCentralClassName".to_string(),
+                    IndexMap::from([(
+                        "myLayoutClassName".to_string(),
+                        vec![
+                            "utility-layout-name-one".to_string(),
+                            "utility-layout-name-two".to_string(),
+                            "utility-layout-name-three".to_string(),
+                        ],
+                    )]),
+                )]),
+            )])),
+        );
+    }
+
+    fn mock_modules_node() {
+        CLASSINATOR.insert(
+            "modules".to_string(),
+            Classinator::Modules(IndexMap::from([(
+                "myClassinatorLayoutNam".to_string(),
+                IndexMap::from([(
+                    "myClassinatorModuleNam".to_string(),
+                    IndexMap::from([(
+                        "myLayoutClassName".to_string(),
+                        IndexMap::from([(
+                            "myModuleClassName".to_string(),
+                            vec![
+                                "utility-module-name-one".to_string(),
+                                "utility-module-name-two".to_string(),
+                                "utility-module-name-three".to_string(),
+                            ],
+                        )]),
+                    )]),
+                )]),
+            )])),
+        );
+    }
+
+    #[test]
+    fn central_map_is_success() {
+        mock_central_node();
+
+        Trailblazer::default().blazer();
+
+        let utility_cls = match CLASTRACK.get("central") {
+            Some(clastrack_data) => match &*clastrack_data {
+                Clastrack::Central(ref central_node) => {
+                    central_node.get("myCentralClassName").map(|v| v.to_owned())
+                }
+                _ => None,
+            },
+            None => None,
+        };
+
+        assert!(utility_cls.is_some());
+        assert_eq!(
+            utility_cls.unwrap(),
+            "utility-name-one utility-name-two utility-name-three"
+        );
+    }
+
+    #[test]
+    fn layout_map_is_success() {
+        mock_central_node();
+        mock_layouts_node();
+
+        Trailblazer::default().blazer();
+
+        let utility_cls = match CLASTRACK.get("layouts") {
+            Some(clastrack_data) => match &*clastrack_data {
+                Clastrack::Layouts(ref layouts_node) => layouts_node
+                    .get("myClassinatorLayoutNam")
+                    .and_then(|context_map| {
+                        context_map.get("myLayoutClassName").map(|v| v.to_owned())
+                    }),
+                _ => None,
+            },
+            None => None,
+        };
+
+        assert!(utility_cls.is_some());
+        assert_eq!(
+            utility_cls.unwrap(),
+            "utility-name-one utility-name-two utility-name-three utility-layout-name-one utility-layout-name-two utility-layout-name-three"
+        );
+    }
+
+    #[test]
+    fn module_map_is_success() {
+        mock_central_node();
+        mock_layouts_node();
+        mock_modules_node();
+
+        Trailblazer::default().blazer();
+
+        let utility_cls = match CLASTRACK.get("modules") {
+            Some(clastrack_data) => match &*clastrack_data {
+                Clastrack::Modules(ref modules_node) => modules_node
+                    .get("myClassinatorModuleNam")
+                    .and_then(|context_map| {
+                        context_map.get("myModuleClassName").map(|v| v.to_owned())
+                    }),
+                _ => None,
+            },
+            None => None,
+        };
+
+        assert!(utility_cls.is_some());
+        assert_eq!(
+            utility_cls.unwrap(),
+            "utility-name-one utility-name-two utility-name-three utility-layout-name-one utility-layout-name-two utility-layout-name-three utility-module-name-one utility-module-name-two utility-module-name-three"
+        );
+    }
+}
