@@ -15,10 +15,11 @@ use shellscape::{
     app::ShellscapeApp, commands::ShellscapeCommands, events::ShellscapeTerminalEvents,
     ui::ShellscapeInterface, Shellscape,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, net::TcpListener, sync::RwLock};
+use tokio::{net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
+use utils::replace_file::replace_file;
 
 mod astroform;
 mod asts;
@@ -29,6 +30,7 @@ pub mod error;
 mod events;
 mod formera;
 mod gatekeeper;
+mod injectron;
 mod intaker;
 mod kickstartor;
 mod lothlorien;
@@ -408,31 +410,17 @@ impl GaladrielRuntime {
 
     async fn replace_configurations_file(&mut self) -> GaladrielResult<()> {
         let config_path = self.working_dir.join("galadriel.config.json");
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(config_path)
-            .await
-            .map_err(|err| {
-                GaladrielError::raise_general_runtime_error(
-                    ErrorKind::GaladrielConfigOpenFileError,
-                    &err.to_string(),
-                    ErrorAction::Notify,
-                )
-            })?;
-
         let serialized_configs = transform_configatron_to_json()?;
-        file.write_all(&serialized_configs.as_bytes())
-            .await
-            .map_err(|err| {
-                GaladrielError::raise_general_runtime_error(
-                    ErrorKind::GaladrielConfigFileWriteError,
-                    &err.to_string(),
-                    ErrorAction::Notify,
-                )
-            })?;
 
-        Ok(())
+        replace_file(
+            config_path,
+            &serialized_configs,
+            ErrorKind::GaladrielConfigOpenFileError,
+            ErrorAction::Notify,
+            ErrorKind::GaladrielConfigFileWriteError,
+            ErrorAction::Notify,
+        )
+        .await
     }
 
     /// Generates a log filename based on the current timestamp.

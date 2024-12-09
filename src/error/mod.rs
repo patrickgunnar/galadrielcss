@@ -521,6 +521,8 @@ pub enum ErrorKind {
     GaladrielConfigOpenFileError,
     GaladrielConfigSerdeSerializationError,
     GaladrielConfigFileWriteError,
+    OpenFileError,
+    FileWriteError,
     NenyrError,
     FileReadMaxRetriesExceeded,
     FileReadFailed,

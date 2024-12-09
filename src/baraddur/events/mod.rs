@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
 #[derive(Clone, Eq, Hash, PartialEq, Debug)]
+pub enum ContextProcessingStatus {
+    Awaiting,
+    Processing,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
 pub enum BaraddurEventProcessorKind {
     Modify,
     Remove,

@@ -6,10 +6,34 @@ use crate::{
     configatron::GaladrielConfig,
     events::GaladrielAlerts,
     types::{Classinator, Clastrack, Stylitron},
-    utils::generates_node_styles::generates_node_styles,
+    utils::{generates_node_styles::generates_node_styles, generates_words::generates_words},
 };
 
 lazy_static! {
+    /// A static reference to a thread-safe `DashMap` that holds a bank of words for name generation.
+    ///
+    /// The `NAMER` map organizes words into two categories:
+    /// - **Adjectives**: A list of descriptive words used in name generation.
+    /// - **Nouns**: A list of objects or entities used in name generation.
+    ///
+    /// These words are loaded into the `DashMap` upon initialization via the `generates_words()`
+    /// function, which returns tuples containing vectors of adjectives and nouns. The words are
+    /// stored with the following keys:
+    /// - `"adjectives"`: Maps to a `Vec<String>` containing adjectives.
+    /// - `"nouns"`: Maps to a `Vec<String>` containing nouns.
+    ///
+    /// This setup enables efficient, concurrent access to the word bank for tasks requiring
+    /// dynamically generated names.
+    pub static ref NAMER: DashMap<String, Vec<String>> = {
+        let dash_map = DashMap::new();
+        let (adjectives, nouns) = generates_words();
+
+        dash_map.insert("adjectives".to_string(), adjectives);
+        dash_map.insert("nouns".to_string(), nouns);
+
+        dash_map
+    };
+
     /// Stores the Galadriel CSS configurations. This `DashMap` contains key-value pairs
     /// where the keys are configuration names as `String` and the values are different
     /// `GaladrielConfig` variants. These configurations are used globally within the

@@ -5,8 +5,12 @@ use nenyr::NenyrParser;
 use tokio::sync::broadcast;
 
 use crate::{
-    crealion::Crealion, error::GaladrielError, events::GaladrielAlerts,
-    utils::resilient_reader::resilient_reader, GaladrielResult,
+    crealion::Crealion,
+    error::{ErrorAction, ErrorKind, GaladrielError},
+    events::GaladrielAlerts,
+    injectron::Injectron,
+    utils::{replace_file::replace_file, resilient_reader::resilient_reader},
+    GaladrielResult,
 };
 
 #[derive(Clone, Debug)]
@@ -35,7 +39,7 @@ impl Formera {
     ) -> GaladrielResult<Option<Vec<String>>> {
         let start_time = Local::now();
         let raw_content = resilient_reader(&self.path).await?;
-        let raw_content = self.process_names_injection(raw_content)?;
+        let raw_content = self.process_names_injection(raw_content).await?;
 
         let path = self.path.to_string_lossy().to_string();
 
@@ -48,9 +52,21 @@ impl Formera {
         crealion.create().await
     }
 
-    pub fn process_names_injection(&self, raw_content: String) -> GaladrielResult<String> {
+    pub async fn process_names_injection(&self, raw_content: String) -> GaladrielResult<String> {
         if self.auto_naming {
-            return Ok(raw_content);
+            let injected_content = Injectron::new(&raw_content).inject()?;
+
+            replace_file(
+                self.path.to_owned(),
+                &injected_content,
+                ErrorKind::OpenFileError,
+                ErrorAction::Notify,
+                ErrorKind::FileWriteError,
+                ErrorAction::Notify,
+            )
+            .await?;
+
+            return Ok(injected_content);
         }
 
         Ok(raw_content)
