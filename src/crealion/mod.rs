@@ -26,6 +26,8 @@ mod typefaces;
 mod utils;
 mod variables;
 
+pub const CENTRAL_CONTEXT_NAME: &str = "gCtxCen_8Xq4ZJ";
+
 type CrealionResult = GaladrielResult<Option<Vec<String>>>;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -57,7 +59,7 @@ impl Crealion {
         path: String,
     ) -> Self {
         Self {
-            central_context_identifier: "gCtxCen_8Xq4ZJ".to_string(),
+            central_context_identifier: CENTRAL_CONTEXT_NAME.to_string(),
             parsed_ast,
             path,
             sender,

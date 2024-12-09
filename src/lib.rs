@@ -20,6 +20,7 @@ use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
 
+mod astroform;
 mod asts;
 mod baraddur;
 mod configatron;

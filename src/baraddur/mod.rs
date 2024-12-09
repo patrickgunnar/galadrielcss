@@ -17,7 +17,11 @@ use tokio::{
 };
 
 use crate::{
-    configatron::{get_auto_naming, load_galadriel_configs, reconstruct_exclude_matcher},
+    astroform::Astroform,
+    configatron::{
+        get_auto_naming, get_minified_styles, get_reset_styles, load_galadriel_configs,
+        reconstruct_exclude_matcher,
+    },
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{GaladrielAlerts, GaladrielEvents},
     formera::Formera,
@@ -805,6 +809,8 @@ impl Baraddur {
     ) {
         let stringified_path = current_path.to_string_lossy().to_string(); // Convert path to a string.
         let is_auto_naming = get_auto_naming(); // Check if auto-naming is enabled.
+        let is_minified_styles = get_minified_styles();
+        let set_reset_styles = get_reset_styles();
         let starting_time = Local::now(); // Record the start time for performance tracking.
 
         tracing::info!("Initiating parsing of Nenyr file: {:?}", stringified_path);
@@ -850,6 +856,13 @@ impl Baraddur {
                 }
 
                 Trailblazer::default().blazer();
+                Astroform::new(
+                    is_minified_styles,
+                    set_reset_styles,
+                    palantir_sender.clone(),
+                )
+                .transform()
+                .await;
 
                 // TODO: Send the event of reload to the main runtime, to be sent to the integration client.
             }
