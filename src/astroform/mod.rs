@@ -336,3 +336,152 @@ impl Astroform {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use tokio::sync::broadcast;
+
+    use crate::{
+        astroform::Astroform,
+        asts::{CASCADEX, STYLITRON},
+        types::Stylitron,
+    };
+
+    #[tokio::test]
+    async fn astroform_succeeds() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+
+        mock_stylitron();
+
+        let (palantir_sender, _) = broadcast::channel(10);
+
+        Astroform::new(true, false, palantir_sender)
+            .transform()
+            .await;
+
+        assert_eq!(
+            format!("{:?}", *CASCADEX),
+            "{\"cascading_sheet\": \"@import url(\\\"https://fonts.googleapis.com/css2?family=Matemasie&display=swap\\\");@font-face{font-family:roseMartin;src:url(\\\"../typefaces/rosemartin.regular.otf\\\")format(\\\"otf\\\")}:root{--gW1yAqTMgoH:#FF6677;}@media(prefers-color-scheme:light){:root{--gNKGUE7AAmy:#FFFFFF;}}@media(prefers-color-scheme:dark){:root{--gNKGUE7AAmy:#000000;}}@keyframes gsZ0H7sD2jUx{0%{background-color:red}50%{background-color:green}100%{background-color:blue}}.\\\\!bgd-rTLF{background:#00FF00!important}@media screen and (min-width:740px){.\\\\!bgd-rTLF{background:#FFF000!important}}\"}".to_string()
+        );
+    }
+
+    fn mock_stylitron() {
+        STYLITRON.insert(
+            "imports".to_string(),
+            Stylitron::Imports(IndexMap::from([(
+                "https://fonts.googleapis.com/css2?family=Matemasie&display=swap".to_string(),
+                (),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "typefaces".to_string(),
+            Stylitron::Typefaces(IndexMap::from([(
+                "roseMartin".to_string(),
+                "../typefaces/rosemartin.regular.otf".to_string(),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "variables".to_string(),
+            Stylitron::Variables(IndexMap::from([(
+                "myAstroformContextName".to_string(),
+                IndexMap::from([(
+                    "myAstroformVar".to_string(),
+                    vec!["--gW1yAqTMgoH".to_string(), "#FF6677".to_string()],
+                )]),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "themes".to_string(),
+            Stylitron::Themes(IndexMap::from([(
+                "myAstroformContextName".to_string(),
+                IndexMap::from([
+                    (
+                        "light".to_string(),
+                        IndexMap::from([(
+                            "primaryColor".to_string(),
+                            vec!["--gNKGUE7AAmy".to_string(), "#FFFFFF".to_string()],
+                        )]),
+                    ),
+                    (
+                        "dark".to_string(),
+                        IndexMap::from([(
+                            "primaryColor".to_string(),
+                            vec!["--gNKGUE7AAmy".to_string(), "#000000".to_string()],
+                        )]),
+                    ),
+                ]),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "animations".to_string(),
+            Stylitron::Animation(IndexMap::from([(
+                "myAstroformContextName".to_string(),
+                IndexMap::from([(
+                    "giddyRespond".to_string(),
+                    IndexMap::from([(
+                        "gsZ0H7sD2jUx".to_string(),
+                        IndexMap::from([
+                            (
+                                "0%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "red".to_string(),
+                                )]),
+                            ),
+                            (
+                                "50%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "green".to_string(),
+                                )]),
+                            ),
+                            (
+                                "100%".to_string(),
+                                IndexMap::from([(
+                                    "background-color".to_string(),
+                                    "blue".to_string(),
+                                )]),
+                            ),
+                        ]),
+                    )]),
+                )]),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "styles".to_string(),
+            Stylitron::Styles(IndexMap::from([(
+                "_".to_string(),
+                IndexMap::from([(
+                    "!important".to_string(),
+                    IndexMap::from([(
+                        "background".to_string(),
+                        IndexMap::from([("\\!bgd-rTLF".to_string(), "#00FF00".to_string())]),
+                    )]),
+                )]),
+            )])),
+        );
+
+        STYLITRON.insert(
+            "responsive".to_string(),
+            Stylitron::ResponsiveStyles(IndexMap::from([(
+                "min-width:740px".to_string(),
+                IndexMap::from([(
+                    "_".to_string(),
+                    IndexMap::from([(
+                        "!important".to_string(),
+                        IndexMap::from([(
+                            "background".to_string(),
+                            IndexMap::from([("\\!bgd-rTLF".to_string(), "#FFF000".to_string())]),
+                        )]),
+                    )]),
+                )]),
+            )])),
+        );
+    }
+}
