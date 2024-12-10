@@ -45,7 +45,7 @@ impl Injectron {
     ///
     /// A `GaladrielResult` containing the modified content if successful, or an error if the
     /// operation fails (e.g., due to missing words bank data).
-    pub fn inject(&self) -> GaladrielResult<String> {
+    pub fn inject(&self) -> GaladrielResult<Option<String>> {
         tracing::info!("Starting injection process.");
 
         let adjectives = self.get_adjectives()?; // Retrieve adjectives from the words bank.
@@ -68,14 +68,16 @@ impl Injectron {
         &self,
         adjectives: &Vec<String>,
         nouns: &Vec<String>,
-    ) -> GaladrielResult<String> {
+    ) -> GaladrielResult<Option<String>> {
         tracing::info!("Performing main injection logic.");
 
         let mut unavailable_names: Vec<String> = vec![];
+        let mut was_injected = false;
 
         // Perform regex-based replacements on the content.
         let modified_content = INJECTRON_RE.replace_all(&self.0, |caps: &regex::Captures| {
             let capture = &caps[0];
+            was_injected = true;
 
             if capture.contains("Layout") || capture.contains("Module") {
                 // Generate a context name for Layout or Module.
@@ -112,7 +114,11 @@ impl Injectron {
 
         tracing::debug!("Modified content: {}", modified_content);
 
-        Ok(modified_content.to_string())
+        if was_injected {
+            return Ok(Some(modified_content.to_string()));
+        }
+
+        Ok(None)
     }
 
     /// Generates a context-relative unique name for classes or animations.
@@ -244,5 +250,46 @@ impl Injectron {
             "Nouns could not be retrieved from the words bank. Injection names for contexts, classes, or animations could not be operated due to this failure.",
             ErrorAction::Notify,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Injectron;
+
+    #[test]
+    fn success_naming_layout_context() {
+        let raw_content = "Construct Layout() {}";
+        let injectron_result = Injectron::new(&raw_content).inject();
+
+        assert!(injectron_result.is_ok());
+        assert!(injectron_result.unwrap().is_some());
+    }
+
+    #[test]
+    fn success_naming_module_context() {
+        let raw_content = "Construct Module() {}";
+        let injectron_result = Injectron::new(&raw_content).inject();
+
+        assert!(injectron_result.is_ok());
+        assert!(injectron_result.unwrap().is_some());
+    }
+
+    #[test]
+    fn success_naming_class() {
+        let raw_content = "Construct Module() {Declare Class('') {},Declare Class() {},}";
+        let injectron_result = Injectron::new(&raw_content).inject();
+
+        assert!(injectron_result.is_ok());
+        assert!(injectron_result.unwrap().is_some());
+    }
+
+    #[test]
+    fn success_naming_animation() {
+        let raw_content = "Construct Layout() {Declare Animation('') {},Declare Animation() {},}";
+        let injectron_result = Injectron::new(&raw_content).inject();
+
+        assert!(injectron_result.is_ok());
+        assert!(injectron_result.unwrap().is_some());
     }
 }

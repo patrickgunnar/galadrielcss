@@ -28,6 +28,7 @@ use crate::{
     gatekeeper::remove_path_from_gatekeeper,
     intaker::remove_context_from_intaker::remove_context_from_intaker,
     trailblazer::Trailblazer,
+    utils::inject_names::inject_names,
     GaladrielResult,
 };
 
@@ -769,6 +770,29 @@ impl Baraddur {
         match processing_event_kind {
             // If the event is a modification, process the associated Nenyr file.
             BaraddurEventProcessorKind::Modify => {
+                // Checks if the auto-naming configuration is enabled.
+                // If enabled, it processes the injection of context, class, and animation names
+                // into the Nenyr context for the current path.
+                if get_auto_naming() {
+                    // Attempts to inject names into the Nenyr context for the provided path.
+                    match inject_names(current_path.to_owned()).await {
+                        // If names were successfully injected, the operation is complete, and the function returns early.
+                        Ok(was_injected) if was_injected => {
+                            return;
+                        }
+                        // If injection was successful but no names were injected, continue execution.
+                        Ok(_) => {}
+                        // If an error occurs during injection, send a Palantir error notification.
+                        Err(error) => {
+                            Self::send_palantir_error_notification(
+                                error,
+                                Local::now(),
+                                palantir_sender.clone(),
+                            );
+                        }
+                    }
+                }
+
                 tracing::info!(
                     "Processing Nenyr file for modification at path: {:?}",
                     current_path
@@ -808,7 +832,6 @@ impl Baraddur {
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         let stringified_path = current_path.to_string_lossy().to_string(); // Convert path to a string.
-        let is_auto_naming = get_auto_naming(); // Check if auto-naming is enabled.
         let is_minified_styles = get_minified_styles();
         let set_reset_styles = get_reset_styles();
         let starting_time = Local::now(); // Record the start time for performance tracking.
@@ -826,7 +849,7 @@ impl Baraddur {
 
         Self::send_palantir_notification(notification, palantir_sender.clone());
 
-        let mut formera = Formera::new(current_path, is_auto_naming, palantir_sender.clone());
+        let mut formera = Formera::new(current_path, palantir_sender.clone());
 
         // Attempt to start parsing the Nenyr file.
         match formera.start(nenyr_parser).await {
