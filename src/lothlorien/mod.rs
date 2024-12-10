@@ -22,11 +22,12 @@ use tungstenite::Message;
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{GaladrielAlerts, GaladrielEvents},
+    utils::{get_updated_css::get_updated_css, get_utility_class_names::get_utility_class_names},
     GaladrielResult,
 };
 
 pub mod events;
-mod request;
+pub mod request;
 
 const GALADRIEL_TEMP_FILE_NAME: &str = "galadrielcss_lothlorien_pipeline_port.txt";
 
@@ -944,18 +945,19 @@ impl LothlorienPipeline {
 
         match request.request {
             Request::CollectClassList {
-                context_type: _,
-                context_name: _,
-                class_name: _,
-            } => {}
+                context_type,
+                context_name,
+                class_name,
+            } => {
+                return get_utility_class_names(context_type, context_name, class_name);
+            }
             Request::FetchUpdatedCSS => {
-                // TODO: Implement a caching mechanism for the CSS, so that it is only updated when
-                // TODO: changes to the CSS AST occur, reducing unnecessary re-renders and improving performance.
+                return get_updated_css();
             }
             _ => {}
         }
 
-        "some-data".to_string()
+        String::new()
     }
 
     /// Sends a success notification to Palantir with details about the operation's duration.

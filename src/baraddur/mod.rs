@@ -664,6 +664,16 @@ impl Baraddur {
                         }
                     }
                 }
+
+                Astroform::new(
+                    get_minified_styles(),
+                    get_reset_styles(),
+                    palantir_sender.clone(),
+                )
+                .transform()
+                .await;
+
+                // TODO: Make the observer notify the integration client to reload the CSS after processing a context or the configuration.
             }
             // Handle errors that occur during event reception.
             Err(err) => {
@@ -832,8 +842,6 @@ impl Baraddur {
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         let stringified_path = current_path.to_string_lossy().to_string(); // Convert path to a string.
-        let is_minified_styles = get_minified_styles();
-        let set_reset_styles = get_reset_styles();
         let starting_time = Local::now(); // Record the start time for performance tracking.
 
         tracing::info!("Initiating parsing of Nenyr file: {:?}", stringified_path);
@@ -863,9 +871,6 @@ impl Baraddur {
                     palantir_sender.clone(),
                 );
 
-                // TODO: Reprocess the layout relation paths if any and send the paths to the main runtime to be sent to the integration client.
-                // TODO: If the current context is a Central context, reload all the contexts of the application and send to the integration client a command to reload the entire application.
-
                 if let Some(layout_relation) = layout_relation {
                     let notification = GaladrielAlerts::create_information(
                         Local::now(),
@@ -879,15 +884,23 @@ impl Baraddur {
                 }
 
                 Trailblazer::default().blazer();
-                Astroform::new(
-                    is_minified_styles,
-                    set_reset_styles,
-                    palantir_sender.clone(),
-                )
-                .transform()
-                .await;
 
-                // TODO: Send the event of reload to the main runtime, to be sent to the integration client.
+                // TODO: 1. Reprocessing Layout Contexts
+                // - Develop a script to reprocess the module contexts derived from the layout's processing.
+                // - Send a command to the integration client instructing it to reprocess the application starting from the folder
+                //   where the layout context resides, including all components within that folder.
+                // - Provide the path of the layout to the integration client, ensuring it knows the starting point for reprocessing
+                //   the application's components.
+
+                // TODO: 2. Reprocessing the Entire Application
+                // - Create a script capable of reprocessing all the layout and module contexts in the application after reprocessing
+                //   a central context.
+                // - Send a command to the integration client to reprocess the entire application starting from the root directory.
+
+                // TODO: 3. Reprocessing Module Contexts
+                // - Trigger a notification for the integration client to reprocess the corresponding JS component.
+                // - Provide the module context's path to the integration client, enabling it to identify and reprocess the specific
+                //   application component.
             }
             // Handle Nenyr-specific errors.
             Err(GaladrielError::NenyrError { start_time, error }) => {
