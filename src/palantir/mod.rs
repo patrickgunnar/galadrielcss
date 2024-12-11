@@ -115,8 +115,8 @@ impl Palantir {
 
                 tracing::info!("Alert pushed to the top of the cache.");
 
-                // Ensure the cache does not exceed 100 entries.
-                if palantir_alerts.value().len() > 100 {
+                // Ensure the cache does not exceed 60 entries.
+                if palantir_alerts.value().len() > 60 {
                     tracing::info!("Cache exceeded 100 alerts, removing the oldest alert.");
                     palantir_alerts.value_mut().pop();
                 }

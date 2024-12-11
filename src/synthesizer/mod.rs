@@ -103,10 +103,12 @@ impl Synthesizer {
                     let file_name = file_name.to_string_lossy().to_string();
 
                     // If the file is a central context file and the flag is set, store its path.
-                    if file_name.ends_with("central.nyr") && self.include_central {
-                        tracing::info!("Identified central context: {:?}", current_path);
+                    if file_name.ends_with("central.nyr") {
+                        if self.include_central {
+                            tracing::info!("Identified central context: {:?}", current_path);
 
-                        self.central_context = current_path;
+                            self.central_context = current_path;
+                        }
                     // If the file is a layout context file, store its path.
                     } else if file_name.ends_with("layout.nyr") {
                         tracing::info!("Identified layout context: {:?}", current_path);

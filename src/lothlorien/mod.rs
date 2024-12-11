@@ -1,7 +1,7 @@
 use std::{env, fs, net::SocketAddr, path::PathBuf};
 
 use chrono::{DateTime, Local};
-use events::{ClientResponse, ConnectedClientEvents};
+use events::ClientResponse;
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -43,9 +43,9 @@ pub struct LothlorienPipeline {
     pipeline_receiver: UnboundedReceiver<GaladrielEvents>,
 
     // Sender for connected client events
-    runtime_sender: broadcast::Sender<ConnectedClientEvents>,
+    runtime_sender: broadcast::Sender<GaladrielEvents>,
     // Receiver for connected client events
-    runtime_receiver: broadcast::Receiver<ConnectedClientEvents>,
+    runtime_receiver: broadcast::Receiver<GaladrielEvents>,
 
     /// Broadcast sender for sending alerts (`GaladrielAlerts`).
     palantir_sender: broadcast::Sender<GaladrielAlerts>,
@@ -192,7 +192,7 @@ impl LothlorienPipeline {
     async fn handle_client_connection(
         pipeline_sender: UnboundedSender<GaladrielEvents>,
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
-        runtime_sender: broadcast::Sender<ConnectedClientEvents>,
+        runtime_sender: broadcast::Sender<GaladrielEvents>,
         connection: Result<(TcpStream, SocketAddr), std::io::Error>,
     ) {
         match connection {
@@ -307,8 +307,8 @@ impl LothlorienPipeline {
     ///
     /// # Returns
     ///
-    /// The `broadcast::Sender<ConnectedClientEvents>` for sending events.
-    pub fn get_runtime_sender(&self) -> broadcast::Sender<ConnectedClientEvents> {
+    /// The `broadcast::Sender<GaladrielEvents>` for sending events.
+    pub fn get_runtime_sender(&self) -> broadcast::Sender<GaladrielEvents> {
         tracing::info!("Retrieving runtime sender.");
         self.runtime_sender.clone()
     }
@@ -405,7 +405,7 @@ impl LothlorienPipeline {
         stream: tokio::net::TcpStream,
         pipeline_sender: UnboundedSender<GaladrielEvents>,
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
-        runtime_sender: broadcast::Sender<ConnectedClientEvents>,
+        runtime_sender: broadcast::Sender<GaladrielEvents>,
     ) -> GaladrielResult<()> {
         // Establishes a WebSocket connection and splits it into sender and receiver components.
         let (mut stream_sender, mut stream_receiver) = Self::accept_sync(stream).await?.split();
@@ -460,7 +460,7 @@ impl LothlorienPipeline {
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
         palantir_receiver: &mut broadcast::Receiver<GaladrielAlerts>,
         stream_receiver: &mut SplitStream<WebSocketStream<TcpStream>>,
-        runtime_receiver: &mut broadcast::Receiver<ConnectedClientEvents>,
+        runtime_receiver: &mut broadcast::Receiver<GaladrielEvents>,
         stream_sender: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     ) -> GaladrielResult<()> {
         loop {
@@ -477,10 +477,22 @@ impl LothlorienPipeline {
                 }
                 // Receives events from the runtime system.
                 runtime_response = runtime_receiver.recv() => {
-                    // If the runtime sender is closed, log a warning and gracefully exit
-                    if let Err(broadcast::error::RecvError::Closed) = runtime_response {
-                       tracing::warn!("Runtime sender has been closed. Shutting down listener gracefully.");
-                        break;
+                    match runtime_response {
+                        // If receives an event from runtime, processes it.
+                        Ok(event) => {
+                            // Send the current event to the connected client.
+                            Self::dispatch_event_to_client(
+                                event,
+                                palantir_sender.clone(),
+                                stream_sender
+                            ).await;
+                        }
+                        // If the runtime sender is closed, log a warning and gracefully exit
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::warn!("Runtime sender has been closed. Shutting down listener gracefully.");
+                            break;
+                        }
+                        _ => {}
                     }
                 }
                 // Receives events from the connected integration client.
@@ -490,6 +502,7 @@ impl LothlorienPipeline {
                             break;
                         }
                         ClientResponse::Text(data) => {
+                            // Send the formatted message to the client using the WebSocket stream.
                             Self::send_server_notification_to_client(
                                 &data,
                                 palantir_sender.clone(),
@@ -504,6 +517,53 @@ impl LothlorienPipeline {
         }
 
         Ok(())
+    }
+
+    /// This asynchronous function is responsible for dispatching events to a connected client
+    /// over a WebSocket connection. It takes different event types and formats them into a
+    /// string that will be sent to the client. Based on the type of event, a specific format
+    /// is chosen, and the event is sent using the `send_server_notification_to_client` method.
+    ///
+    /// # Parameters
+    /// - `event`: The event to be dispatched to the client. It is of type `GaladrielEvents`,
+    ///   which determines the content of the message that will be sent.
+    /// - `palantir_sender`: A broadcast sender used for sending alerts.
+    /// - `stream_sender`: A mutable reference to the `SplitSink` of the WebSocket stream.
+    ///   It is used to send the formatted event message to the connected client.
+    async fn dispatch_event_to_client(
+        event: GaladrielEvents,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        stream_sender: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
+    ) {
+        // Determine the message to send based on the event type.
+        // Each case matches a different event, and formats a corresponding string message.
+        let send_to_client = match event {
+            // If the event is "RefreshCSS", prepare a message to refresh the CSS on the client.
+            GaladrielEvents::RefreshCSS => {
+                format!("refresh-css;{}", get_updated_css())
+            }
+            // If the event is "RefreshFromRoot", prepare a message to refresh the application starting from the root.
+            GaladrielEvents::RefreshFromRoot => "refresh-from-root".to_string(),
+            // If the event is "RefreshComponent", prepare a message to refresh a single component in the application.
+            GaladrielEvents::RefreshComponent(file_file) => {
+                format!("refresh-component;{}", file_file)
+            }
+            // If the event is "RefreshFromLayoutParent", prepare a message to refresh components starting from the folder path.
+            GaladrielEvents::RefreshFromLayoutParent(folder_path) => {
+                format!("refresh-from-layout-parent;{}", folder_path)
+            }
+            _ => return,
+        };
+
+        tracing::debug!("Sending event to connected client: {}", send_to_client);
+
+        // Send the formatted message to the client using the WebSocket stream.
+        Self::send_server_notification_to_client(
+            &send_to_client,
+            palantir_sender.clone(),
+            stream_sender,
+        )
+        .await;
     }
 
     /// Accepts an incoming TCP stream and upgrades it to a WebSocket connection.

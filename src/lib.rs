@@ -139,7 +139,6 @@ impl GaladrielRuntime {
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
         let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
-        let mut _runtime_sender = pipeline.get_runtime_sender(); // Get runtime sender for Lothlórien pipeline
 
         // Initialize the Barad-dûr file system observer.
         let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
@@ -188,6 +187,9 @@ impl GaladrielRuntime {
     ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
 
+        // Get runtime sender for Lothlórien pipeline
+        let pipeline_sender = pipeline.get_runtime_sender();
+
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(shellscape_app) {
@@ -230,7 +232,11 @@ impl GaladrielRuntime {
 
                             return Err(err);
                         }
-                        _ => {}
+                        Ok(event) => {
+                            if let Err(err) = pipeline_sender.send(event) {
+                                tracing::error!("Something went wrong while sending event from observer to the server: Error: {:?}", err);
+                            }
+                        }
                     }
                 }
                 // Handle events from the Shellscape terminal interface.
