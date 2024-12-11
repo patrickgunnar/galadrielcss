@@ -28,14 +28,14 @@ mod variables;
 
 pub const CENTRAL_CONTEXT_NAME: &str = "gCtxCen_8Xq4ZJ";
 
-type CrealionResult = GaladrielResult<Option<Vec<String>>>;
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum CrealionContextType {
     Central,
     Layout,
     Module,
 }
+
+type CrealionResult = GaladrielResult<(CrealionContextType, Option<Vec<String>>)>;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -239,7 +239,7 @@ impl Crealion {
 
         tracing::info!("Central Context Collector initialization completed");
 
-        Ok(None)
+        Ok((CrealionContextType::Central, None))
     }
 
     /// Initializes the layout context by processing variables, themes, aliases, animations, and classes.
@@ -376,7 +376,9 @@ impl Crealion {
         // Collects the paths related to the current layout context.
         // If a relationship exists, Galadriel CSS reprocesses the modules associated with the current layout context.
         // This ensures that all related contexts are updated with the latest styles, maintaining consistency and synchronization.
-        Ok(self.retrieve_module_layout_relationship(&context_name))
+        let related_contexts = self.retrieve_module_layout_relationship(&context_name);
+
+        Ok((CrealionContextType::Layout, related_contexts))
     }
 
     /// Initializes the module context by processing variables, aliases, animations, and classes.
@@ -503,7 +505,7 @@ impl Crealion {
         // Registers the relationship between the extended layout (specified by its name) and the current file path.
         self.register_module_layout_relationship(extended_from, self.path.to_owned());
 
-        Ok(None)
+        Ok((CrealionContextType::Module, None))
     }
 
     /// Transforms the given context name.
@@ -582,7 +584,7 @@ mod tests {
         asts::STYLITRON, types::Stylitron, utils::generates_node_styles::generates_node_styles,
     };
 
-    use super::Crealion;
+    use super::{Crealion, CrealionContextType};
 
     fn reset_stylitron() {
         STYLITRON.clear();
@@ -639,7 +641,7 @@ mod tests {
                         let result = crealion.create().await;
 
                         assert!(result.is_ok());
-                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(result.unwrap(), (CrealionContextType::Central, None));
                         assert_eq!(
                             STYLITRON.get("breakpoints").map(|v| format!("{:?}", &*v)),
                             Some("Breakpoints({\"mobile-first\": {\"onMobXs\": \"min-width:360px\"}, \"desktop-first\": {\"onDeskSmall\": \"max-width:1024px\"}})".to_string())
@@ -711,7 +713,7 @@ mod tests {
                         let result = crealion.create().await;
 
                         assert!(result.is_ok());
-                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(result.unwrap(), (CrealionContextType::Layout, None));
                         assert_eq!(
                             STYLITRON.get("themes").map(|v| format!("{:?}", &*v)),
                             Some("Themes({\"dynamicLayout\": {\"light\": {\"primaryColor\": [\"--gNDnNldHTaq\", \"#FFFFFF\"]}, \"dark\": {\"primaryColor\": [\"--gNDnNldHTaq\", \"#1E1E1E\"]}}})".to_string())
@@ -771,7 +773,7 @@ mod tests {
                         let result = crealion.create().await;
 
                         assert!(result.is_ok());
-                        assert_eq!(result.unwrap(), None);
+                        assert_eq!(result.unwrap(), (CrealionContextType::Module, None));
                         assert_eq!(
                             STYLITRON.get("aliases").map(|v| format!("{:?}", &*v)),
                             Some("Aliases({\"modernCanvas\": {\"bgd\": \"background\", \"dp\": \"display\", \"transf\": \"transform\", \"pdg\": \"padding\", \"wd\": \"width\", \"hgt\": \"height\", \"flexDir\": \"flex-direction\"}})".to_string())

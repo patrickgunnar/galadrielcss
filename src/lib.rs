@@ -15,6 +15,7 @@ use shellscape::{
     app::ShellscapeApp, commands::ShellscapeCommands, events::ShellscapeTerminalEvents,
     ui::ShellscapeInterface, Shellscape,
 };
+use synthesizer::Synthesizer;
 use tokio::{net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
@@ -32,10 +33,10 @@ mod formera;
 mod gatekeeper;
 mod injectron;
 mod intaker;
-mod kickstartor;
 mod lothlorien;
 mod palantir;
 mod shellscape;
+mod synthesizer;
 mod trailblazer;
 mod types;
 mod utils;
@@ -151,6 +152,14 @@ impl GaladrielRuntime {
         pipeline.register_server_port_in_temp(running_on_port)?; // Register the pipeline's server port in temporary storage.
         interface.invoke()?; // Start the Shellscape terminal interface rendering.
 
+        let working_dir = self.working_dir.clone();
+        let matcher = Arc::clone(&atomically_matcher);
+
+        // Initialize and process all Nenyr files at the beginning of the development cycle.
+        Synthesizer::new(true, matcher, palantir_sender.clone())
+            .process(&working_dir)
+            .await;
+
         // Transition to development runtime.
         let development_runtime_result = self
             .development_runtime(
@@ -179,8 +188,6 @@ impl GaladrielRuntime {
     ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
 
-        // TODO: Move the initial parsing operation into here, after the UI, server and observer had stated.
-
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
             if let Err(err) = interface.render(shellscape_app) {
@@ -205,6 +212,7 @@ impl GaladrielRuntime {
 
                             return Err(err);
                         }
+                        _ => {}
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
@@ -222,6 +230,7 @@ impl GaladrielRuntime {
 
                             return Err(err);
                         }
+                        _ => {}
                     }
                 }
                 // Handle events from the Shellscape terminal interface.

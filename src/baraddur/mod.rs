@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use chrono::{DateTime, Local};
+use chrono::Local;
 use events::{BaraddurEventProcessor, BaraddurEventProcessorKind, BaraddurRenameEventState};
 use ignore::overrides;
 use nenyr::NenyrParser;
@@ -22,13 +22,20 @@ use crate::{
         get_auto_naming, get_minified_styles, get_reset_styles, load_galadriel_configs,
         reconstruct_exclude_matcher,
     },
+    crealion::CrealionContextType,
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{GaladrielAlerts, GaladrielEvents},
-    formera::Formera,
+    formera::formera,
     gatekeeper::remove_path_from_gatekeeper,
     intaker::remove_context_from_intaker::remove_context_from_intaker,
+    synthesizer::Synthesizer,
     trailblazer::Trailblazer,
-    utils::inject_names::inject_names,
+    utils::{
+        inject_names::inject_names, is_nenyr_event::is_nenyr_event,
+        send_palantir_error_notification::send_palantir_error_notification,
+        send_palantir_notification::send_palantir_notification,
+        send_palantir_success_notification::send_palantir_success_notification,
+    },
     GaladrielResult,
 };
 
@@ -257,11 +264,7 @@ impl Baraddur {
                         ErrorAction::Notify,
                     );
 
-                    Self::send_palantir_error_notification(
-                        error,
-                        Local::now(),
-                        palantir_sender.clone(),
-                    );
+                    send_palantir_error_notification(error, Local::now(), palantir_sender.clone());
                 }
             }
         }
@@ -306,7 +309,7 @@ impl Baraddur {
 
                     // Handle events related to the configuration file.
                     Self::process_configuration_event(debounced_event.kind, processing_events);
-                } else if Self::is_nenyr_event(path, matcher) {
+                } else if is_nenyr_event(path, matcher) {
                     tracing::debug!("Detected Nenyr-specific event for path: {:?}", path);
 
                     // Handle events related to Nenyr files.
@@ -423,19 +426,6 @@ impl Baraddur {
         path == configuration_path
     }
 
-    /// Checks if a given path corresponds to a Nenyr file.
-    ///
-    /// # Arguments
-    /// - `path`: Path to the file triggering the event.
-    /// - `matcher`: Matcher for identifying Nenyr-specific events.
-    ///
-    /// # Returns
-    /// - `true` if the path corresponds to a Nenyr file, otherwise `false`.
-    fn is_nenyr_event(path: &PathBuf, matcher: &overrides::Override) -> bool {
-        !matcher.matched(path, false).is_ignore()
-            && path.extension().map(|ext| ext == "nyr").unwrap_or(false)
-    }
-
     /// Determines the type of event for configuration files.
     ///
     /// # Arguments
@@ -550,12 +540,10 @@ impl Baraddur {
             );
 
             // Attempt to send the error to the main runtime.
-            if let Err(err) = baraddur_sender.send(GaladrielEvents::Error(error)) {
-                tracing::error!(
-                    "Failed to send error notification to main runtime: {:?}",
-                    err
-                );
-            }
+            Self::send_event_to_main_runtime(
+                GaladrielEvents::Error(error),
+                baraddur_sender.clone(),
+            );
         } else {
             tracing::info!(
                 "File watcher successfully started for directory: {:?}",
@@ -564,7 +552,7 @@ impl Baraddur {
 
             // Create and send a success notification to indicate that the watcher is active.
             let starting_time = Local::now();
-            Self::send_palantir_success_notification(
+            send_palantir_success_notification(
                 &Self::random_watch_message(),
                 starting_time,
                 palantir_sender.clone(),
@@ -654,8 +642,10 @@ impl Baraddur {
                             tracing::info!("Processing event: {:?} for path: {:?}", kind, path);
 
                             Self::match_processing_event_kind(
+                                working_dir,
                                 path,
                                 nenyr_parser,
+                                Arc::clone(&matcher),
                                 kind,
                                 baraddur_sender.clone(),
                                 palantir_sender.clone(),
@@ -665,6 +655,7 @@ impl Baraddur {
                     }
                 }
 
+                // Updates the CSS cache by transforming the most up-to-date styles.
                 Astroform::new(
                     get_minified_styles(),
                     get_reset_styles(),
@@ -673,7 +664,13 @@ impl Baraddur {
                 .transform()
                 .await;
 
-                // TODO: Make the observer notify the integration client to reload the CSS after processing a context or the configuration.
+                // This method triggers a `RefreshCSS` event, which is sent to the main runtime.
+                // The event will then be forwarded to the connected integration client to refresh the CSS
+                // on the application, ensuring that the latest styles are applied.
+                Self::send_event_to_main_runtime(
+                    GaladrielEvents::RefreshCSS,
+                    baraddur_sender.clone(),
+                );
             }
             // Handle errors that occur during event reception.
             Err(err) => {
@@ -685,11 +682,7 @@ impl Baraddur {
                     ErrorAction::Notify,
                 );
 
-                Self::send_palantir_error_notification(
-                    error,
-                    Local::now(),
-                    palantir_sender.clone(),
-                );
+                send_palantir_error_notification(error, Local::now(), palantir_sender.clone());
             }
         }
     }
@@ -722,12 +715,12 @@ impl Baraddur {
                     // Notify Palantir of the successful matcher reconstruction.
                     Ok(notification) => {
                         tracing::info!("Exclude matcher reconstructed successfully.");
-                        Self::send_palantir_notification(notification, palantir_sender.clone());
+                        send_palantir_notification(notification, palantir_sender.clone());
                     }
                     // Notify Palantir of any errors that occur during reconstruction.
                     Err(error) => {
                         tracing::error!("Failed to reconstruct exclude matcher: {:?}", error);
-                        Self::send_palantir_error_notification(
+                        send_palantir_error_notification(
                             error,
                             starting_time,
                             palantir_sender.clone(),
@@ -738,7 +731,7 @@ impl Baraddur {
                 tracing::info!("Galadriel CSS configurations updated successfully.");
 
                 // Send a success notification indicating the system has been updated.
-                Self::send_palantir_success_notification(
+                send_palantir_success_notification(
                     "Galadriel CSS configurations updated successfully. System is now operating with the latest configuration.",
                     starting_time,
                     palantir_sender.clone()
@@ -748,11 +741,7 @@ impl Baraddur {
             Err(error) => {
                 tracing::error!("Failed to load Galadriel configurations: {:?}", error);
 
-                Self::send_palantir_error_notification(
-                    error,
-                    starting_time,
-                    palantir_sender.clone(),
-                );
+                send_palantir_error_notification(error, starting_time, palantir_sender.clone());
             }
         }
     }
@@ -765,8 +754,10 @@ impl Baraddur {
     /// - `nenyr_parser`: Reference to the Nenyr parser for handling Nenyr files.
     /// - `palantir_sender`: Sender used to broadcast alerts or notifications.
     async fn match_processing_event_kind(
+        working_dir: &PathBuf,
         current_path: &PathBuf,
         nenyr_parser: &mut NenyrParser,
+        matcher: Arc<RwLock<overrides::Override>>,
         processing_event_kind: &BaraddurEventProcessorKind,
         baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
@@ -794,7 +785,7 @@ impl Baraddur {
                         Ok(_) => {}
                         // If an error occurs during injection, send a Palantir error notification.
                         Err(error) => {
-                            Self::send_palantir_error_notification(
+                            send_palantir_error_notification(
                                 error,
                                 Local::now(),
                                 palantir_sender.clone(),
@@ -810,7 +801,9 @@ impl Baraddur {
 
                 Self::process_nenyr_file(
                     current_path.to_owned(),
+                    working_dir,
                     nenyr_parser,
+                    matcher,
                     baraddur_sender,
                     palantir_sender.clone(),
                 )
@@ -837,8 +830,10 @@ impl Baraddur {
     /// - `palantir_sender`: Sender used to broadcast alerts or notifications.
     async fn process_nenyr_file(
         current_path: PathBuf,
+        working_dir: &PathBuf,
         nenyr_parser: &mut NenyrParser,
-        _baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
+        matcher: Arc<RwLock<overrides::Override>>,
+        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         let stringified_path = current_path.to_string_lossy().to_string(); // Convert path to a string.
@@ -855,143 +850,200 @@ impl Baraddur {
             ),
         );
 
-        Self::send_palantir_notification(notification, palantir_sender.clone());
+        send_palantir_notification(notification, palantir_sender.clone());
 
-        let mut formera = Formera::new(current_path, palantir_sender.clone());
+        // Parses and processes the current Nenyr context.
+        // This function returns a tuple containing:
+        // - `context_type`: The type of the context being processed.
+        // - `layout_relation`: The layout relationship associated with the parsed context.
+        let (context_type, layout_relation) = formera(
+            current_path.to_owned(),
+            nenyr_parser,
+            starting_time,
+            palantir_sender.clone(),
+        )
+        .await;
 
-        // Attempt to start parsing the Nenyr file.
-        match formera.start(nenyr_parser).await {
-            // Notify Palantir on successful parsing.
-            Ok(layout_relation) => {
-                tracing::info!("Successfully parsed Nenyr file: {:?}", stringified_path);
+        tracing::info!(
+            "Parsed Nenyr context: {:?}, Layout relation: {:?}",
+            context_type,
+            layout_relation
+        );
 
-                Self::send_palantir_success_notification(
-                    &format!("The Nenyr file located at {:?} has been successfully parsed and processed without any errors. All relevant data has been extracted and is ready for further operations.", stringified_path),
-                    starting_time,
-                    palantir_sender.clone(),
-                );
+        // If the current processed context is a layout context and a layout relation exists,
+        // this method iterates through the related module paths and reprocesses the associated
+        // Nenyr module contexts.
+        if let Some(layout_relation) = layout_relation {
+            tracing::debug!("Layout relation found, processing related module paths.");
 
-                if let Some(layout_relation) = layout_relation {
-                    let notification = GaladrielAlerts::create_information(
-                        Local::now(),
-                        &format!(
-                            "The current layout context contains these relations: {:?}",
-                            layout_relation
-                        ),
-                    );
+            let notification = GaladrielAlerts::create_information(
+                Local::now(),
+                &format!("Galadriel CSS has just started reprocessing the Module contexts related to the `{stringified_path}` Layout context, as the Layout context has been completely reprocessed. This is necessary to maintain all styles up-to-date.")
+            );
 
-                    Self::send_palantir_notification(notification, palantir_sender.clone());
-                }
+            send_palantir_notification(notification, palantir_sender.clone());
 
-                Trailblazer::default().blazer();
+            for module_path in layout_relation {
+                tracing::debug!("Processing related module path: {:?}", module_path);
 
-                // TODO: 1. Reprocessing Layout Contexts
-                // - Develop a script to reprocess the module contexts derived from the layout's processing.
-                // - Send a command to the integration client instructing it to reprocess the application starting from the folder
-                //   where the layout context resides, including all components within that folder.
-                // - Provide the path of the layout to the integration client, ensuring it knows the starting point for reprocessing
-                //   the application's components.
-
-                // TODO: 2. Reprocessing the Entire Application
-                // - Create a script capable of reprocessing all the layout and module contexts in the application after reprocessing
-                //   a central context.
-                // - Send a command to the integration client to reprocess the entire application starting from the root directory.
-
-                // TODO: 3. Reprocessing Module Contexts
-                // - Trigger a notification for the integration client to reprocess the corresponding JS component.
-                // - Provide the module context's path to the integration client, enabling it to identify and reprocess the specific
-                //   application component.
-            }
-            // Handle Nenyr-specific errors.
-            Err(GaladrielError::NenyrError { start_time, error }) => {
-                tracing::error!(
-                    "Nenyr error occurred while parsing file: {:?}",
-                    stringified_path
-                );
-                tracing::error!("Error details: {:?}", error);
-
-                let notification =
-                    GaladrielAlerts::create_nenyr_error(start_time.to_owned(), error.to_owned());
-
-                Self::send_palantir_notification(notification, palantir_sender.clone());
-            }
-            // Handle other errors and notify Palantir.
-            Err(error) => {
-                tracing::error!(
-                    "Unexpected error occurred while processing Nenyr file: {:?}",
-                    stringified_path
-                );
-                tracing::error!("Error details: {:?}", error);
-
-                Self::send_palantir_error_notification(
-                    error,
+                let _ = formera(
+                    PathBuf::from(module_path),
+                    nenyr_parser,
                     Local::now(),
                     palantir_sender.clone(),
+                )
+                .await;
+            }
+        }
+
+        // This method processes the current context type and sends appropriate events to
+        // the main runtime. These events are then forwarded to the connected integration
+        // client for further handling.
+        Self::match_current_context_type_event(
+            working_dir,
+            &current_path,
+            context_type,
+            matcher,
+            baraddur_sender.clone(),
+            palantir_sender.clone(),
+        )
+        .await;
+
+        tracing::info!("Parsing process completed for: {:?}", current_path);
+
+        // Create a notification indicating that the parsing process has been completed.
+        let notification = GaladrielAlerts::create_information(
+        Local::now(),
+        "The parsing process has concluded. All stages, including the interpretation, validation, and transformation of data, have been finalized. The system is now ready for subsequent operations or tasks."
+    );
+
+        send_palantir_notification(notification, palantir_sender.clone());
+    }
+
+    /// This method matches the current context type and sends corresponding events to the main runtime,
+    /// which will then propagate them to the integration client.
+    ///
+    /// Depending on the context type, the method will trigger different events such as refreshing components
+    /// or refreshing the entire application starting from the root or a parent folder.
+    ///
+    /// # Arguments
+    /// - `working_dir`: The working directory, used for the processing contexts from the root of the application.
+    /// - `current_path`: The path to the current context file.
+    /// - `context_type`: An optional value representing the current context type (e.g., Layout, Module, or Central).
+    /// - `matcher`: A reference to a `RwLock` containing an `Override` object for the exclude matching.
+    /// - `baraddur_sender`: A sender used to send events to the main runtime.
+    /// - `palantir_sender`: A broadcast sender used to send alerts to Palantir.
+    ///
+    /// This function processes the current path and context type to send the appropriate refresh event
+    /// to the main runtime, notifying the integration client.
+    async fn match_current_context_type_event(
+        working_dir: &PathBuf,
+        current_path: &PathBuf,
+        context_type: Option<CrealionContextType>,
+        matcher: Arc<RwLock<overrides::Override>>,
+        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
+        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    ) {
+        tracing::info!(
+            "Matching context type event for context: {:?}, path: {:?}",
+            context_type,
+            current_path
+        );
+
+        // Match the provided context type to determine the correct event to trigger.
+        match context_type {
+            // If the context type is Layout or Module, trigger the corresponding layout/module events.
+            Some(CrealionContextType::Layout) | Some(CrealionContextType::Module) => {
+                // Applies inheritance for Nenyr classes and their corresponding utility class names.
+                Trailblazer::default().blazer();
+
+                // If the context is Layout, check the parent path and send a refresh event.
+                if let Some(CrealionContextType::Layout) = context_type {
+                    match current_path.parent() {
+                        // If there is a parent path, send a refresh event to the parent layout.
+                        Some(parent_path) => {
+                            let parent_path = parent_path.to_string_lossy().to_string();
+
+                            tracing::debug!(
+                                "Sending refresh event to parent layout: {:?}",
+                                parent_path
+                            );
+
+                            Self::send_event_to_main_runtime(
+                                GaladrielEvents::RefreshFromLayoutParent(parent_path),
+                                baraddur_sender.clone(),
+                            );
+                        }
+                        // If there's no parent path, trigger a refresh event starting from the root.
+                        None => {
+                            tracing::debug!(
+                                "No parent layout path, sending refresh event from root."
+                            );
+
+                            Self::send_event_to_main_runtime(
+                                GaladrielEvents::RefreshFromRoot,
+                                baraddur_sender.clone(),
+                            );
+                        }
+                    }
+                } else {
+                    // If the context is Module, remove the ".nyr" suffix and send a refresh event for the component.
+                    let formatted_path = current_path
+                        .to_string_lossy()
+                        .to_string()
+                        .replace(".nyr", "");
+
+                    tracing::debug!("Sending refresh event for component: {:?}", formatted_path);
+
+                    Self::send_event_to_main_runtime(
+                        GaladrielEvents::RefreshComponent(formatted_path),
+                        baraddur_sender.clone(),
+                    );
+                }
+            }
+            // If the context type is Central.
+            Some(CrealionContextType::Central) => {
+                tracing::info!(
+                    "Context type is Central, initiating reprocess of Nenyr contexts from root."
+                );
+
+                let notification = GaladrielAlerts::create_information(
+                    Local::now(),
+                    "Galadriel CSS has just started reprocessing the Layout and Module contexts of the application, as the Central context has been fully reprocessed. This is necessary to keep all styles up-to-date."
+                );
+
+                send_palantir_notification(notification, palantir_sender.clone());
+
+                // Reprocess all layout and module contexts from the application, excluding the central context.
+                Synthesizer::new(false, matcher, palantir_sender.clone())
+                    .process(working_dir)
+                    .await;
+
+                tracing::debug!("Synthesizer process completed. Sending refresh event from root.");
+
+                Self::send_event_to_main_runtime(
+                    GaladrielEvents::RefreshFromRoot,
+                    baraddur_sender.clone(),
                 );
             }
+            None => {}
         }
     }
 
-    /// Sends a success notification to Palantir with details about the operation's duration.
+    /// Sends an event to the main runtime through the Baraddur sender.
     ///
-    /// # Parameters
-    /// - `message`: A success message describing the operation.
-    /// - `starting_time`: The timestamp when the operation started.
-    /// - `palantir_sender`: Sender used to broadcast the success notification.
-    fn send_palantir_success_notification(
-        message: &str,
-        starting_time: DateTime<Local>,
-        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
-    ) {
-        let ending_time = Local::now(); // Record the end time of the operation.
-        let duration = ending_time - starting_time; // Calculate the operation's duration.
-
-        tracing::info!(
-            "Operation completed successfully in {:?}, duration: {:?}",
-            ending_time,
-            duration
-        );
-
-        // Create a success notification with timestamps and duration.
-        let notification =
-            GaladrielAlerts::create_success(starting_time, ending_time, duration, message);
-
-        // Send the success notification.
-        Self::send_palantir_notification(notification, palantir_sender.clone());
-    }
-
-    /// Sends an error notification to Palantir with details about the encountered error.
+    /// # Arguments
+    /// - `event`: The event to be sent to the main runtime.
+    /// - `baraddur_sender`: The sender responsible for transmitting the event.
     ///
-    /// # Parameters
-    /// - `error`: The error encountered during the operation.
-    /// - `starting_time`: The timestamp when the operation started.
-    /// - `palantir_sender`: Sender used to broadcast the error notification.
-    fn send_palantir_error_notification(
-        error: GaladrielError,
-        starting_time: DateTime<Local>,
-        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
+    /// This function tries to send the provided event to the main runtime. If the sending process fails,
+    /// an error is logged.
+    fn send_event_to_main_runtime(
+        event: GaladrielEvents,
+        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
     ) {
-        tracing::error!("Error occurred during operation. Details: {:?}", error);
-
-        // Create an error notification with the starting timestamp and error details.
-        let notification = GaladrielAlerts::create_galadriel_error(starting_time, error);
-
-        // Send the error notification.
-        Self::send_palantir_notification(notification, palantir_sender.clone());
-    }
-
-    /// Sends a notification to Palantir. Handles errors if the notification fails to send.
-    ///
-    /// # Parameters
-    /// - `notification`: The notification to be sent.
-    /// - `palantir_sender`: Sender used to broadcast the notification.
-    fn send_palantir_notification(
-        notification: GaladrielAlerts,
-        palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
-    ) {
-        // Attempt to send the notification. Log an error if it fails.
-        if let Err(err) = palantir_sender.send(notification) {
-            tracing::error!("Failed to send alert: {:?}", err);
+        if let Err(err) = baraddur_sender.send(event) {
+            tracing::error!("Failed to send notification to main runtime: {:?}", err);
         }
     }
 
