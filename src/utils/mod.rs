@@ -6,6 +6,7 @@ pub mod inject_names;
 pub mod is_nenyr_event;
 pub mod replace_file;
 pub mod resilient_reader;
+pub mod restore_abstract_syntax_trees;
 pub mod send_palantir_error_notification;
 pub mod send_palantir_notification;
 pub mod send_palantir_success_notification;

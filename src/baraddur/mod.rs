@@ -1016,7 +1016,7 @@ impl Baraddur {
 
                 // Reprocess all layout and module contexts from the application, excluding the central context.
                 Synthesizer::new(false, matcher, palantir_sender.clone())
-                    .process(working_dir)
+                    .process(get_minified_styles(), working_dir)
                     .await;
 
                 tracing::debug!("Synthesizer process completed. Sending refresh event from root.");

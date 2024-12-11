@@ -3,11 +3,12 @@ use std::{io::Stdout, net::SocketAddr, path::PathBuf, sync::Arc};
 use baraddur::Baraddur;
 use chrono::Local;
 use configatron::{
-    construct_exclude_matcher, get_port, load_galadriel_configs, switch_auto_naming,
-    switch_minified_styles, switch_reset_styles, transform_configatron_to_json,
+    construct_exclude_matcher, get_minified_styles, get_port, load_galadriel_configs,
+    switch_auto_naming, switch_minified_styles, switch_reset_styles, transform_configatron_to_json,
 };
 use error::{ErrorAction, ErrorKind, GaladrielError};
 use events::{GaladrielAlerts, GaladrielEvents};
+use ignore::overrides;
 use lothlorien::LothlorienPipeline;
 use palantir::Palantir;
 use ratatui::prelude::CrosstermBackend;
@@ -16,12 +17,16 @@ use shellscape::{
     ui::ShellscapeInterface, Shellscape,
 };
 use synthesizer::Synthesizer;
-use tokio::{net::TcpListener, sync::RwLock};
+use tokio::{
+    net::TcpListener,
+    sync::{broadcast, RwLock},
+};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
 use utils::{
     get_updated_css::get_updated_css, replace_file::replace_file,
+    restore_abstract_syntax_trees::restore_abstract_syntax_trees,
     serialize_classes_tracking::serialize_classes_tracking, write_file::write_file,
 };
 
@@ -125,7 +130,7 @@ impl GaladrielRuntime {
 
         // Start the build process for all Nenyr files.
         Synthesizer::new(true, atomically_matcher, palantir_sender.clone())
-            .process(&working_dir)
+            .process(true, &working_dir)
             .await;
 
         // Get the most up-to-dated CSS.
@@ -184,16 +189,19 @@ impl GaladrielRuntime {
 
         // Initialize and process all Nenyr files at the beginning of the development cycle.
         Synthesizer::new(true, matcher, palantir_sender.clone())
-            .process(&working_dir)
+            .process(get_minified_styles(), &working_dir)
             .await;
 
         // Transition to development runtime.
         let development_runtime_result = self
             .development_runtime(
+                &working_dir,
                 &mut pipeline,
                 &mut shellscape,
                 &mut shellscape_app,
                 &mut baraddur_observer,
+                Arc::clone(&atomically_matcher),
+                palantir_sender,
                 &mut interface,
             )
             .await;
@@ -207,10 +215,13 @@ impl GaladrielRuntime {
 
     async fn development_runtime(
         &mut self,
+        working_dir: &PathBuf,
         pipeline: &mut LothlorienPipeline,
         shellscape: &mut Shellscape,
         shellscape_app: &mut ShellscapeApp,
         baraddur_observer: &mut Baraddur,
+        matcher: Arc<RwLock<overrides::Override>>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
         interface: &mut ShellscapeInterface<CrosstermBackend<Stdout>>,
     ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
@@ -273,7 +284,15 @@ impl GaladrielRuntime {
                         // Handle a valid event from the Shellscape terminal interface.
                         Ok(event) => {
                             // Exit the loop if the terminate command is received.
-                            if let ShellscapeCommands::Terminate = self.handle_shellscape_event(event, shellscape, shellscape_app).await {
+                            if let ShellscapeCommands::Terminate = self.handle_shellscape_event(
+                                working_dir,
+                                shellscape,
+                                event,
+                                shellscape_app,
+                                Arc::clone(&matcher),
+                                palantir_sender.clone(),
+                                pipeline_sender.clone(),
+                            ).await {
                                 break;
                             }
                         }
@@ -293,14 +312,27 @@ impl GaladrielRuntime {
 
     async fn handle_shellscape_event(
         &mut self,
-        event: ShellscapeTerminalEvents,
+        working_dir: &PathBuf,
         shellscape: &mut Shellscape,
+        event: ShellscapeTerminalEvents,
         shellscape_app: &mut ShellscapeApp,
+        matcher: Arc<RwLock<overrides::Override>>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        pipeline_sender: broadcast::Sender<GaladrielEvents>,
     ) -> ShellscapeCommands {
         // Match the event to its corresponding Shellscape command.
         match shellscape.match_shellscape_event(event) {
             ShellscapeCommands::Terminate => {
                 return ShellscapeCommands::Terminate;
+            }
+            ShellscapeCommands::ResetAllAsts => {
+                self.restore_abstract_syntax_trees_to_default(
+                    working_dir,
+                    matcher,
+                    palantir_sender,
+                    pipeline_sender,
+                )
+                .await;
             }
             ShellscapeCommands::ScrollNotificationsUp => {
                 shellscape_app.reset_alerts_scroll_down();
@@ -416,6 +448,52 @@ impl GaladrielRuntime {
         }
 
         ShellscapeCommands::None
+    }
+
+    /// Restores the abstract syntax trees (ASTs) to their default state and notifies the server of changes.
+    ///
+    /// This method performs the following steps:
+    /// 1. Restores the ASTs to their default state.
+    /// 2. Reprocess the Nenyr contexts of the application.
+    /// 3. Notifies the connected integration client to reload the CSS and reload all components of the application.
+    async fn restore_abstract_syntax_trees_to_default(
+        &self,
+        working_dir: &PathBuf,
+        matcher: Arc<RwLock<overrides::Override>>,
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        pipeline_sender: broadcast::Sender<GaladrielEvents>,
+    ) {
+        tracing::info!("Starting restoration of abstract syntax trees to default state.");
+
+        // Restore the abstract syntax trees (ASTs) to their default state.
+        restore_abstract_syntax_trees();
+
+        tracing::info!(
+            "Reprocessing Nenyr contexts to repopulate abstract syntax trees with updated styles."
+        );
+
+        // Initialize a `Synthesizer` to process styles with the restored ASTs.
+        Synthesizer::new(true, matcher, palantir_sender.clone())
+            .process(get_minified_styles(), working_dir)
+            .await;
+
+        // Send the events.
+        self.send_event_to_server(GaladrielEvents::RefreshCSS, pipeline_sender.clone());
+        self.send_event_to_server(GaladrielEvents::RefreshFromRoot, pipeline_sender.clone());
+    }
+
+    /// Sends a specific event to the server through the pipeline.
+    fn send_event_to_server(
+        &self,
+        event: GaladrielEvents,
+        pipeline_sender: broadcast::Sender<GaladrielEvents>,
+    ) {
+        if let Err(err) = pipeline_sender.send(event) {
+            tracing::error!(
+                "Something went wrong while sending event to server. Error: {:?}",
+                err
+            );
+        }
     }
 
     /// Extracts the local address from a TCP listener, handling any errors encountered.

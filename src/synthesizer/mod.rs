@@ -6,12 +6,8 @@ use nenyr::NenyrParser;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::{
-    astroform::Astroform,
-    configatron::{get_minified_styles, get_reset_styles},
-    events::GaladrielAlerts,
-    formera::formera,
-    trailblazer::Trailblazer,
-    utils::is_nenyr_event::is_nenyr_event,
+    astroform::Astroform, configatron::get_reset_styles, events::GaladrielAlerts, formera::formera,
+    trailblazer::Trailblazer, utils::is_nenyr_event::is_nenyr_event,
 };
 
 /// `Synthesizer` is responsible for reprocessing all Nenyr contexts in the application.
@@ -66,11 +62,12 @@ impl Synthesizer {
     /// and categorizes them into central, layout, and module contexts for further processing.
     ///
     /// # Arguments
+    /// - `is_minified`: If the styles is to be minified.
     /// - `working_dir`: The directory to traverse for Nenyr context files.
     ///
     /// # Returns
     /// This function is asynchronous and does not return a value.
-    pub async fn process(&mut self, working_dir: &PathBuf) {
+    pub async fn process(&mut self, is_minified: bool, working_dir: &PathBuf) {
         tracing::info!(
             "Starting to process Nenyr contexts in directory: {:?}",
             working_dir
@@ -125,7 +122,7 @@ impl Synthesizer {
         }
 
         // After identifying all the relevant context files, start the parsing process.
-        self.run_parsing().await;
+        self.run_parsing(is_minified).await;
 
         tracing::info!("Finished parsing and transforming all contexts.");
     }
@@ -135,9 +132,11 @@ impl Synthesizer {
     /// This function processes the contexts in the order: central, then layout, and then modules.
     /// After parsing, it triggers a final transformation using `Astroform`.
     ///
+    /// - `is_minified`: If the styles is to be minified.
+    ///
     /// # Returns
     /// This function is asynchronous and does not return a value.
-    async fn run_parsing(&mut self) {
+    async fn run_parsing(&mut self, is_minified: bool) {
         tracing::info!("Running parsing for contexts: central, layout, and modules.");
 
         // Create a new instance of the Nenyr parser.
@@ -178,13 +177,9 @@ impl Synthesizer {
             tracing::info!("Transforming styles in CSS utility rules.");
 
             // Updates the CSS cache by transforming the most up-to-date styles.
-            Astroform::new(
-                get_minified_styles(),
-                get_reset_styles(),
-                palantir_sender.clone(),
-            )
-            .transform()
-            .await;
+            Astroform::new(is_minified, get_reset_styles(), palantir_sender.clone())
+                .transform()
+                .await;
         }
     }
 }

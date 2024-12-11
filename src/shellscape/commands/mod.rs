@@ -31,6 +31,7 @@ pub enum ShellscapeCommands {
     ToggleAutoNaming,
     ModifyVersion,
     AdjustExclude,
+    ResetAllAsts,
 }
 
 impl ShellscapeCommands {
@@ -59,6 +60,10 @@ impl ShellscapeCommands {
             KeyCode::Char('c') | KeyCode::Char('C') if event.modifiers == KeyModifiers::CONTROL => {
                 info!("Received termination command via `Ctrl+C`");
                 ShellscapeCommands::Terminate
+            }
+            KeyCode::Char('w') | KeyCode::Char('W') if event.modifiers == KeyModifiers::SHIFT => {
+                info!("Resetting all ASTs...");
+                ShellscapeCommands::ResetAllAsts
             }
             KeyCode::Char('r') | KeyCode::Char('R') if event.modifiers == KeyModifiers::SHIFT => {
                 info!("Toggling reset styles...");

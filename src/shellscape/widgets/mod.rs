@@ -441,52 +441,26 @@ impl ShellscapeWidgets {
         // Format the title of the section.
         let configs_title = self.format_block_title(" Options".to_string(), dock_width);
 
-        // Create individual options with their respective shortcut keys.
-        let clear_alerts = self.format_dock_option(
-            "Clear All Alerts".to_string(),
-            "'Shift' + 'K'".to_string(),
-            dock_width,
-        );
-
-        let shortcuts = self.format_dock_option(
-            "View Shortcuts".to_string(),
-            "'Ctrl' + 'S'".to_string(),
-            dock_width,
-        );
-
-        let license = self.format_dock_option(
-            "View License".to_string(),
-            "'Ctrl' + 'L'".to_string(),
-            dock_width,
-        );
-
-        let about_author = self.format_dock_option(
-            "About the Author".to_string(),
-            "'Ctrl' + 'A'".to_string(),
-            dock_width,
-        );
-
-        let donation = self.format_dock_option(
-            "Make a Donation".to_string(),
-            "'Ctrl' + 'D'".to_string(),
-            dock_width,
-        );
-
-        let contribute = self.format_dock_option(
-            "Contribute as Dev".to_string(),
-            "'Ctrl' + 'T'".to_string(),
-            dock_width,
-        );
-
         // Add the title and options to the list of lines.
         lines.push(configs_title);
         lines.push(Line::from(Span::raw("")));
-        lines.push(clear_alerts);
-        lines.push(shortcuts);
-        lines.push(license);
-        lines.push(about_author);
-        lines.push(donation);
-        lines.push(contribute);
+
+        let options = vec![
+            ("Clear All Alerts".to_string(), "'Shift' + 'K'".to_string()),
+            ("Reset All ASTs".to_string(), "'Shift' + 'W'".to_string()),
+            ("View Shortcuts".to_string(), "'Ctrl' + 'S'".to_string()),
+            ("View License".to_string(), "'Ctrl' + 'L'".to_string()),
+            ("About the Author".to_string(), "'Ctrl' + 'A'".to_string()),
+            ("Make a Donation".to_string(), "'Ctrl' + 'D'".to_string()),
+            ("Contribute as Dev".to_string(), "'Ctrl' + 'T'".to_string()),
+        ];
+
+        // Create individual options with their respective shortcut keys.
+        for (label, shortcut) in options {
+            let option = self.format_dock_option(label, shortcut, dock_width);
+
+            lines.push(option);
+        }
 
         lines
     }
