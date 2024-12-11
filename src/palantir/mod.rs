@@ -50,7 +50,7 @@ impl Palantir {
     ///
     /// # Returns
     /// A `JoinHandle` representing the spawned Tokio task.
-    pub fn start_alert_watcher(&self) -> JoinHandle<()> {
+    pub fn start_alert_watcher(&self, is_build: bool) -> JoinHandle<()> {
         let palantir_sender = self.get_palantir_sender();
 
         tracing::info!("Starting the alert watcher.");
@@ -69,8 +69,12 @@ impl Palantir {
                             Ok(notification) => {
                                 tracing::info!("Received a new alert: {:?}", notification);
 
-                                // Push valid notifications to the top of the cache.
-                                Self::push_top(notification);
+                                if is_build {
+                                    println!("{:?}", notification);
+                                } else {
+                                    // Push valid notifications to the top of the cache.
+                                    Self::push_top(notification);
+                                }
                             },
                             Err(sync::broadcast::error::RecvError::Closed) => {
                                 tracing::info!("Alert watcher channel closed, stopping the task.");
@@ -91,7 +95,12 @@ impl Palantir {
                                 // Create an alert for the error and push it to the cache.
                                 let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
-                                Self::push_top(notification);
+                                if is_build {
+                                    eprintln!("{:?}", notification)
+                                } else {
+                                    // Push valid notification to the top of the cache.
+                                    Self::push_top(notification);
+                                }
                             }
                         }
                     }

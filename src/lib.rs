@@ -20,7 +20,10 @@ use tokio::{net::TcpListener, sync::RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
-use utils::replace_file::replace_file;
+use utils::{
+    get_updated_css::get_updated_css, replace_file::replace_file,
+    serialize_classes_tracking::serialize_classes_tracking, write_file::write_file,
+};
 
 mod astroform;
 mod asts;
@@ -107,11 +110,36 @@ impl GaladrielRuntime {
     }
 
     async fn start_build_mode(&mut self) -> GaladrielResult<()> {
+        // Load the galadriel configurations.
         load_galadriel_configs(&self.working_dir).await?;
 
-        println!("Build process not implemented yet.");
+        // Exclude matcher for file system monitoring
+        let working_dir = self.working_dir.clone();
+        let matcher = construct_exclude_matcher(&working_dir)?; // Create an exclude matcher based on the working directory.
+        let atomically_matcher = Arc::new(RwLock::new(matcher)); // Wrap the matcher in an Arc and RwLock for thread-safe shared ownership and mutable access.
 
-        Ok(())
+        // Initialize the Palantir alerts system.
+        let palantir_alerts = Palantir::new();
+        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher(true); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+
+        // Start the build process for all Nenyr files.
+        Synthesizer::new(true, atomically_matcher, palantir_sender.clone())
+            .process(&working_dir)
+            .await;
+
+        // Get the most up-to-dated CSS.
+        let css = get_updated_css();
+        // Get the most up-to-dated Nenyr classes tracking maps
+        let tracking = serialize_classes_tracking();
+
+        // Formats the final json.
+        let folder_path = working_dir.join(".galadrielcss");
+        let final_json_path = folder_path.join("galadrielcss.json");
+        let final_json = format!("{{\"css\": {:?}, \"trackingClasses\": {}}}", css, tracking);
+
+        // Creates the final json containing the CSS and Nenyr classes tracking map at root dir + `/.galadrielcss/galadrielcss.json`.
+        write_file(folder_path, final_json_path, final_json, ErrorAction::Exit).await
     }
 
     async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
@@ -126,7 +154,7 @@ impl GaladrielRuntime {
         // Initialize the Palantir alerts system.
         let palantir_alerts = Palantir::new();
         let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
-        let _start_alert_watcher = palantir_alerts.start_alert_watcher(); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
 
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();

@@ -523,6 +523,8 @@ pub enum ErrorKind {
     GaladrielConfigFileWriteError,
     OpenFileError,
     FileWriteError,
+    FileCreationError,
+    FileDirCreationError,
     NenyrError,
     FileReadMaxRetriesExceeded,
     FileReadFailed,
