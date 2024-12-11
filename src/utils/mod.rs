@@ -4,6 +4,7 @@ pub mod get_updated_css;
 pub mod get_utility_class_names;
 pub mod inject_names;
 pub mod is_nenyr_event;
+pub mod pretty_print;
 pub mod replace_file;
 pub mod resilient_reader;
 pub mod restore_abstract_syntax_trees;

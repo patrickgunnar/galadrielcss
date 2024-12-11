@@ -4,7 +4,7 @@ use tokio::{sync, task::JoinHandle};
 use crate::{
     asts::PALANTIR_ALERTS,
     error::{ErrorAction, ErrorKind, GaladrielError},
-    events::GaladrielAlerts,
+    events::GaladrielAlerts, utils::pretty_print::pretty_print,
 };
 
 /// Represents a communication channel for broadcasting and managing `GaladrielAlerts`.
@@ -70,7 +70,7 @@ impl Palantir {
                                 tracing::info!("Received a new alert: {:?}", notification);
 
                                 if is_build {
-                                    println!("{:?}", notification);
+                                    pretty_print(notification);
                                 } else {
                                     // Push valid notifications to the top of the cache.
                                     Self::push_top(notification);
@@ -96,7 +96,7 @@ impl Palantir {
                                 let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
 
                                 if is_build {
-                                    eprintln!("{:?}", notification)
+                                    pretty_print(notification);
                                 } else {
                                     // Push valid notification to the top of the cache.
                                     Self::push_top(notification);
