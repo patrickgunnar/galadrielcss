@@ -4,7 +4,7 @@ use ratatui::widgets::ScrollbarState;
 use syntect::{
     easy::HighlightLines,
     highlighting::ThemeSet,
-    parsing::{SyntaxReference, SyntaxSet, SyntaxSetBuilder},
+    parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder},
 };
 use tokio::sync;
 use tracing::{debug, info};
@@ -13,6 +13,7 @@ use crate::{
     asts::PALANTIR_ALERTS,
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::{AlertTextType, GaladrielAlerts},
+    utils::get_nenyr_syntax::get_nenyr_syntax,
     GaladrielResult,
 };
 
@@ -77,8 +78,7 @@ impl ShellscapeApp {
 
         // Create a new syntax set builder
         let mut ssb = SyntaxSetBuilder::new();
-        // Add syntax from the given folder (recursively)
-        ssb.add_from_folder("src/shellscape/syntax", true)
+        let nenyr_syntax = SyntaxDefinition::load_from_str(&get_nenyr_syntax(), true, None)
             .map_err(|err| {
                 GaladrielError::raise_general_interface_error(
                     ErrorKind::NenyrSyntaxIntegrationFailed,
@@ -86,6 +86,9 @@ impl ShellscapeApp {
                     ErrorAction::Exit,
                 )
             })?;
+
+        // Add syntax.
+        ssb.add(nenyr_syntax);
 
         // Build the syntax set
         let syntax_set = ssb.build();

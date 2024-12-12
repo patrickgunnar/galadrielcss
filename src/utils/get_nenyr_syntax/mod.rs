@@ -1,4 +1,5 @@
-%YAML 1.2
+pub fn get_nenyr_syntax() -> String {
+    r#"%YAML 1.2
 ---
 name: Nenyr
 scope: source.nenyr
@@ -61,3 +62,5 @@ contexts:
     numbers:
         - match: \b\d+(\.\d+)?%?\b
           scope: entity.name.function.nenyr
+"#.to_string()
+}

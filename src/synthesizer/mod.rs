@@ -147,7 +147,7 @@ impl Synthesizer {
         let mut ordered_contexts: Vec<PathBuf> = Vec::new();
 
         // If the central context is included, add its path to the order.
-        if self.include_central {
+        if self.include_central && !self.central_context.to_string_lossy().is_empty() {
             ordered_contexts.push(self.central_context.to_owned());
         }
 

@@ -260,13 +260,7 @@ pub fn switch_minified_styles() {
 /// Defaults to `true`.
 pub fn get_auto_naming() -> bool {
     match CONFIGATRON.get("autoNaming") {
-        Some(ref auto_naming) => {
-            let result = auto_naming.get_auto_naming();
-
-            tracing::debug!("'autoNaming' configuration found: {}", result);
-
-            result
-        }
+        Some(ref auto_naming) => auto_naming.get_auto_naming(),
         None => true,
     }
 }
@@ -276,13 +270,7 @@ pub fn get_auto_naming() -> bool {
 /// Defaults to `true`.
 pub fn get_reset_styles() -> bool {
     match CONFIGATRON.get("resetStyles") {
-        Some(ref reset_styles) => {
-            let result = reset_styles.get_reset_styles();
-
-            tracing::debug!("'resetStyles' configuration found: {}", result);
-
-            result
-        }
+        Some(ref reset_styles) => reset_styles.get_reset_styles(),
         None => true,
     }
 }
@@ -292,13 +280,7 @@ pub fn get_reset_styles() -> bool {
 /// Defaults to `true`.
 pub fn get_minified_styles() -> bool {
     match CONFIGATRON.get("minifiedStyles") {
-        Some(ref minified_styles) => {
-            let result = minified_styles.get_minified_styles();
-
-            tracing::debug!("'minifiedStyles' configuration found: {}", result);
-
-            result
-        }
+        Some(ref minified_styles) => minified_styles.get_minified_styles(),
         None => true,
     }
 }
@@ -307,13 +289,7 @@ pub fn get_minified_styles() -> bool {
 /// Returns a vector of excluded paths or an empty vector if not found.
 pub fn get_exclude() -> Vec<String> {
     match CONFIGATRON.get("exclude") {
-        Some(ref exclude) => {
-            let result = exclude.get_exclude();
-
-            tracing::debug!("'exclude' configuration found: {:?}", result);
-
-            result
-        }
+        Some(ref exclude) => exclude.get_exclude(),
         None => vec![],
     }
 }
@@ -322,13 +298,7 @@ pub fn get_exclude() -> Vec<String> {
 /// Returns the port as a string, or "0" if not found.
 pub fn get_port() -> String {
     match CONFIGATRON.get("port") {
-        Some(ref port) => {
-            let result = port.get_port();
-
-            tracing::debug!("'port' configuration found: {}", result);
-
-            result
-        }
+        Some(ref port) => port.get_port(),
         None => "0".to_string(),
     }
 }

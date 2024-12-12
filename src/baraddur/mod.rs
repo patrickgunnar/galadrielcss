@@ -170,8 +170,6 @@ impl Baraddur {
             tokio::time::Duration::from_millis(self.from_millis),
             None,
             move |event_result| {
-                tracing::debug!("Debouncer received an event result.");
-
                 // Spawn an asynchronous task to process the debouncer events.
                 let debouncer_sender = debouncer_tx.clone();
                 let palantir_sender = palantir_sender.clone();
@@ -222,11 +220,6 @@ impl Baraddur {
     ) {
         match event_result {
             Ok(debounced_events) => {
-                tracing::info!(
-                    "Processing {} debounced events from the asynchronous debouncer.",
-                    debounced_events.len()
-                );
-
                 // Initialize processing and rename state for events.
                 let mut processing_events: Vec<BaraddurEventProcessor> = Vec::new();
                 let mut rename_state = BaraddurRenameEventState::None;
@@ -285,20 +278,8 @@ impl Baraddur {
         rename_state: &mut BaraddurRenameEventState,
         processing_events: &mut Vec<BaraddurEventProcessor>,
     ) {
-        tracing::info!(
-            "Processing {} debounced events with configuration path: {:?}",
-            debounced_events.len(),
-            configuration_path
-        );
-
         // Iterate over each debounced event.
         debounced_events.iter().for_each(|debounced_event| {
-            tracing::debug!(
-                "Processing debounced event: {:?} with paths: {:?}",
-                debounced_event.kind,
-                debounced_event.paths
-            );
-
             // Check paths associated with the event.
             debounced_event.paths.iter().for_each(|path| {
                 if Self::is_configuration_event(path, configuration_path) {
@@ -322,8 +303,6 @@ impl Baraddur {
                 }
             });
         });
-
-        tracing::info!("Completed processing debounced events.");
     }
 
     /// Processes events related to the configuration file.
