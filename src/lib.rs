@@ -1,3 +1,78 @@
+//! # Galadriel CSS
+//!
+//! `Galadriel CSS` is a comprehensive and efficient framework for managing CSS styles in complex, scalable applications. It employs a modular, hierarchical design that allows for precise control over how styles are applied and inherited across various components and modules within a project. The framework’s key strengths lie in its extensibility, performance, and ease of maintenance, making it well-suited for both simple and large-scale applications.
+//!
+//! ## Overview
+//!
+//! The `Galadriel CSS` framework is built with scalability and modularity in mind. It organizes styles into a hierarchical context system that makes it easy to manage global, layout-specific, and module-specific styles in a highly structured manner. This context-driven approach ensures that styles can be inherited, overridden, or extended without unnecessary duplication or conflicts.
+//!
+//! At the heart of `Galadriel CSS` is **Nenyr**, a domain-specific language (DSL) designed to declare styles, variables, animations, and more. These Nenyr definitions are then processed into efficient, utility-first CSS during the build process. The framework is optimized for performance and clean code organization, reducing the potential for redundant CSS rules and improving load times.
+//!
+//! Core concepts of `Galadriel CSS` include:
+//!
+//! - **Context Hierarchy**: Organizes styles into multiple layers (Central, Layout, and Module contexts) to handle different scopes of styling.
+//! - **Class Inheritance**: Supports inheritance of styles across contexts, enabling modular and reusable style definitions.
+//! - **Context Extension**: Enables contexts to extend other contexts, ensuring consistency and extensibility across styles.
+//! - **Variable and Animation Uniqueness**: Guarantees that variables and animations are scoped and resolved per context, preventing unintended conflicts.
+//!
+//! ## Context Hierarchy
+//!
+//! `Galadriel CSS` organizes its styles into a flexible, hierarchical context system, where each context defines a set of styles that apply to different parts of the application. The primary contexts in this system are:
+//!
+//! - **Central Context**: The foundation of all styles in the application. This context defines global styles, themes, and settings that apply across the entire project. Common settings like typography, color schemes, and general style rules are defined here.
+//!
+//! - **Layout Context**: Responsible for styling groups of Module Contexts or component sections that form the overall layout of the application. Layout contexts inherit styles from the Central Context by default and can define additional rules specific to the group of Module Contexts or components.
+//!
+//! - **Module Context**: Each module or component in the application can have its own set of styles encapsulated within a Module Context. These styles are scoped and only apply to the specific module or component, ensuring that modular components do not inadvertently influence the rest of the layout. Module contexts can extend Layout Contexts and the Central Context by default, inheriting styles while adding or overriding properties as needed.
+//!
+//! The context hierarchy allows for highly specific and reusable style definitions, ensuring that each level of the application can have its own isolated set of styles while still maintaining a connection to the broader application-wide settings.
+//!
+//! ## Class Inheritance and Context Extension
+//!
+//! `Galadriel CSS` supports powerful mechanisms for inheritance and extension to ensure that styles are applied consistently and efficiently across the entire project:
+//!
+//! - **Class Inheritance**: When defining a style in a parent context (e.g., Central or Layout Context), the child contexts (e.g., Module Contexts) can inherit those styles. This inheritance allows for streamlined and consistent styling across multiple layers without redundant CSS definitions. A style defined in a higher context will automatically cascade down to child contexts unless specifically overridden.
+//!
+//! - **Context Extension**: `Galadriel CSS` allows for the extension of contexts to enable the reuse of styles and maintain consistency. For example, a Module Context (extends the Central Context by default) can extend a Layout Context, which in turn extends the Central Context. This hierarchy of context extension ensures that modules inherit the layout and global styles while being able to define their own additional or overriding rules. The ability to extend contexts prevents the need to redefine common styles at each level of the application, promoting DRY (Don't Repeat Yourself) principles and reducing the overall CSS footprint.
+//!
+//! These inheritance and extension mechanisms ensure that styles are always applied in a predictable and controlled manner, resulting in an efficient and maintainable CSS output.
+//!
+//! ## Variable and Animation Uniqueness
+//!
+//! One of the key features of `Galadriel CSS` is its approach to variables and animations, which are scoped and unique to their respective contexts. This ensures that even if different contexts use the same variable or animation name, they are treated as independent entities, thus preventing potential conflicts and ensuring that styles are applied consistently.
+//!
+//! - **Variables**: Variables in `Galadriel CSS` are context-specific, meaning that the same variable name in different contexts will reference different values. This ensures that changes in one context will not inadvertently affect other contexts. For example, a color variable defined in the Central Context will be distinct from a color variable defined in a Module Context, even if both use the same identifier. The framework always resolves to the closest variable value in the context hierarchy, ensuring that each context’s specific needs are met.
+//!
+//! - **Animations**: Like variables, animations are scoped to the context in which they are defined. This means that different contexts can define their own set of animations without fear of conflicts. Animations will always be resolved to the closest context, ensuring that the correct animation is applied based on the current context. This scoping approach allows for the modular use of animations while maintaining consistency across the application.
+//!
+//! ## Implementation Details
+//!
+//! The core components of `Galadriel CSS` are designed to manage context-specific styles, handle inheritance and extension, and process variables and animations with unique scoping:
+//!
+//! - **Context Management**: This component is responsible for defining, extending, and managing contexts. It ensures that contexts are properly nested and that inheritance and extension rules are applied correctly. It also resolves the scope of variables and animations according to the context hierarchy.
+//!
+//! - **Style Application**: The style application system processes the defined Nenyr styles and generates efficient, utility-first CSS. It applies the appropriate styles based on the context hierarchy and ensures that no redundant CSS rules are created. The result is a minimal, optimized CSS output that reflects the exact styles required for each context.
+//!
+//! - **Variable and Animation Handling**: This system manages the resolution of variables and animations within their respective contexts. It ensures that each context has access to its own variables and animations while maintaining isolation from other contexts. This handling ensures that the application of these values is consistent and correct throughout the entire hierarchy.
+//!
+//! ## Usage
+//!
+//! To use `Galadriel CSS` in your application, you must define your styles using the **Nenyr** DSL. This involves specifying the contexts and their relationships to one another. The Nenyr definitions will be processed during the build stage, generating optimized CSS that respects the context hierarchy and inheritance rules.
+//!
+//! ### Example Workflow:
+//!
+//! 1. **Define Contexts**: Create your Central, Layout, and Module contexts using Nenyr syntax. You can define global styles in the Central Context, layout styles in the Layout Context, and module-specific styles in the Module Context.
+//!
+//! 2. **Extend Contexts**: If needed, extend contexts to inherit styles from parent contexts. For example, a Module Context (extend the Central Context by default) can extend a Layout Context to inherit layout-related styles, and the Layout Context extend the Central Context by default for global styles.
+//!
+//! 3. **Build Process**: During the build process, Nenyr definitions are compiled into efficient, utility-first CSS. This CSS will reflect the styles defined in the contexts and follow the inheritance and extension rules as specified.
+//!
+//! 4. **Apply Styles**: The generated CSS will be applied to your application and the utility class names related to a Nenyr class will be applied to the components where they were specified, with styles dynamically determined based on the context hierarchy. Styles will be applied according to the closest context, with inherited and extended styles resolved automatically.
+//!
+//! By using `Galadriel CSS` in this manner, you can easily manage complex styles in a modular and scalable way, ensuring your application remains clean, maintainable, and performant.
+//!
+//! For further integration details, refer to the specific methods and functions documented in the module, which provide advanced features for managing contexts, variables, animations, and other styling elements within `Galadriel CSS`.
+
 use std::{io::Stdout, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use baraddur::Baraddur;
@@ -49,22 +124,34 @@ mod trailblazer;
 mod types;
 mod utils;
 
+/// Represents the runtime modes of Galadriel CSS.
 #[derive(Clone, PartialEq, Debug)]
 pub enum GaladrielRuntimeKind {
+    /// Development mode for real-time updates and testing.
     Development,
+    /// Build mode for compiling and generating production-ready outputs.
     Build,
-    Update,
 }
 
+/// A result type specific to Galadriel CSS operations, wrapping standard Rust results with `GaladrielError`.
 pub type GaladrielResult<T> = Result<T, GaladrielError>;
 
+/// Represents the runtime environment for Galadriel CSS.
 #[derive(Clone, PartialEq, Debug)]
 pub struct GaladrielRuntime {
+    /// The mode in which the runtime is operating.
     runtime_mode: GaladrielRuntimeKind,
+    /// The working directory for file operations and configurations.
     working_dir: PathBuf,
 }
 
 impl GaladrielRuntime {
+    /// Creates a new Galadriel runtime instance with the specified mode and working directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `runtime_mode` - The runtime mode (Development, or Build).
+    /// * `working_dir` - The directory used for runtime operations.
     pub fn new(runtime_mode: GaladrielRuntimeKind, working_dir: PathBuf) -> Self {
         Self {
             runtime_mode,
@@ -72,14 +159,19 @@ impl GaladrielRuntime {
         }
     }
 
+    /// Executes the runtime logic based on the current runtime mode.
+    ///
+    /// # Returns
+    ///
+    /// A `GaladrielResult` indicating success or failure.
     pub async fn run(&mut self) -> GaladrielResult<()> {
         match self.runtime_mode {
             GaladrielRuntimeKind::Development => self.start_development_mode().await,
             GaladrielRuntimeKind::Build => self.start_build_mode().await,
-            GaladrielRuntimeKind::Update => Ok(()),
         }
     }
 
+    /// Starts the development mode, setting up the environment and logging.
     async fn start_development_mode(&mut self) -> GaladrielResult<()> {
         // ===================================================================================================================
         // Creates the development logs subscriber.
@@ -99,6 +191,8 @@ impl GaladrielRuntime {
             .with_writer(non_blocking) // Use the non-blocking writer.
             .finish(); // Finalize the subscriber configuration.
 
+        tracing::debug!("Log subscriber built and configured.");
+
         // Set logs subscriber.
         tracing::subscriber::set_global_default(subscriber).map_err(|err| {
             tracing::error!("Failed to set log subscriber: {:?}", err.to_string());
@@ -110,33 +204,49 @@ impl GaladrielRuntime {
             )
         })?;
 
+        tracing::info!("Log subscriber set successfully.");
+
         // Configure the development runtime environment.
         self.configure_development_environment().await
     }
 
+    /// Starts the build mode, processing styles and generating the final output.
     async fn start_build_mode(&mut self) -> GaladrielResult<()> {
+        tracing::info!("Starting build mode.");
+
         // Load the galadriel configurations.
         load_galadriel_configs(&self.working_dir).await?;
+
+        tracing::debug!("Loaded Galadriel CSS configurations.");
 
         // Exclude matcher for file system monitoring
         let working_dir = self.working_dir.clone();
         let matcher = construct_exclude_matcher(&working_dir)?; // Create an exclude matcher based on the working directory.
         let atomically_matcher = Arc::new(RwLock::new(matcher)); // Wrap the matcher in an Arc and RwLock for thread-safe shared ownership and mutable access.
 
+        tracing::debug!("Created exclude matcher for working directory.");
+
         // Initialize the Palantir alerts system.
         let palantir_alerts = Palantir::new();
         let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
         let _start_alert_watcher = palantir_alerts.start_alert_watcher(true); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+
+        tracing::info!("Initialized Palantir alerts system.");
+        tracing::info!("Started Nenyr file processing.");
 
         // Start the build process for all Nenyr files.
         Synthesizer::new(true, atomically_matcher, palantir_sender.clone())
             .process(true, &working_dir)
             .await;
 
+        tracing::info!("Nenyr file processing finished.");
+
         // Get the most up-to-dated CSS.
         let css = get_updated_css();
         // Get the most up-to-dated Nenyr classes tracking maps
         let tracking = serialize_classes_tracking();
+
+        tracing::debug!("Retrieved updated CSS and class tracking maps.");
 
         // Formats the final json.
         let folder_path = working_dir.join(".galadrielcss");
@@ -144,22 +254,35 @@ impl GaladrielRuntime {
         let final_json = format!("{{\"css\": {:?}, \"trackingClasses\": {}}}", css, tracking);
 
         // Creates the final json containing the CSS and Nenyr classes tracking map at root dir + `/.galadrielcss/galadrielcss.json`.
-        write_file(folder_path, final_json_path, final_json, ErrorAction::Exit).await
+        write_file(folder_path, final_json_path, final_json, ErrorAction::Exit).await?;
+
+        tracing::info!("Build process completed and final JSON file written.");
+
+        Ok(())
     }
 
+    /// Configures the development environment for Galadriel CSS.
     async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
+        tracing::info!("Configuring development environment.");
+
         // Load the galadriel configurations.
         load_galadriel_configs(&self.working_dir).await?;
+
+        tracing::debug!("Loaded Galadriel configurations.");
 
         // Exclude matcher for file system monitoring
         let working_dir = self.working_dir.clone();
         let matcher = construct_exclude_matcher(&working_dir)?; // Create an exclude matcher based on the working directory.
         let atomically_matcher = Arc::new(RwLock::new(matcher)); // Wrap the matcher in an Arc and RwLock for thread-safe shared ownership and mutable access.
 
+        tracing::debug!("Created exclude matcher for working directory.");
+
         // Initialize the Palantir alerts system.
         let palantir_alerts = Palantir::new();
         let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
         let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+
+        tracing::info!("Initialized Palantir alerts system.");
 
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
@@ -167,11 +290,16 @@ impl GaladrielRuntime {
         let mut interface = shellscape.create_interface()?; // Terminal interface setup
         let mut shellscape_app = shellscape.create_app(palantir_sender.clone())?; // Application/state setup for Shellscape
 
+        tracing::debug!("Initialized Shellscape UI and application state.");
+
         // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
         let mut pipeline = LothlorienPipeline::new(get_port(), palantir_sender.clone());
         let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
         let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
         let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
+
+        tracing::debug!(port = %running_on_port, "Initialized Lothlórien pipeline and WebSocket listener.");
+        tracing::info!("Started WebSocket pipeline for Lothlórien.");
 
         // Initialize the Barad-dûr file system observer.
         let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
@@ -180,17 +308,30 @@ impl GaladrielRuntime {
         let matcher = Arc::clone(&atomically_matcher); // Clone the Arc reference to atomically_matcher for sharing it across threads safely.
         let _start_observation = baraddur_observer.watch(matcher, &mut deb, deb_tx.clone()); // Start observing with the baraddur_observer, using the matcher, the debouncer (mut deb), and the deb_tx sender for debouncing.
 
+        tracing::info!("Started Barad-dûr file system observer.");
+
         shellscape_app.reset_server_running_on_port(running_on_port); // Set the running port.
         pipeline.register_server_port_in_temp(running_on_port)?; // Register the pipeline's server port in temporary storage.
         interface.invoke()?; // Start the Shellscape terminal interface rendering.
 
+        tracing::debug!(
+            "Registered pipeline server port in temporary storage: {}",
+            running_on_port
+        );
+        tracing::debug!("Started Shellscape terminal interface...");
+
         let working_dir = self.working_dir.clone();
         let matcher = Arc::clone(&atomically_matcher);
+
+        tracing::info!("Starting initial Nenyr file processing...");
 
         // Initialize and process all Nenyr files at the beginning of the development cycle.
         Synthesizer::new(true, matcher, palantir_sender.clone())
             .process(get_minified_styles(), &working_dir)
             .await;
+
+        tracing::info!("Initial Nenyr file processing finished.");
+        tracing::info!("Transitioning to development runtime...");
 
         // Transition to development runtime.
         let development_runtime_result = self
@@ -210,9 +351,18 @@ impl GaladrielRuntime {
         pipeline.remove_server_port_in_temp()?;
         interface.abort()?;
 
+        tracing::debug!(
+            "Removed server port from temporary storage: {}",
+            running_on_port
+        );
+
+        tracing::debug!("Aborted Shellscape interface...");
+        tracing::info!("Development environment finalized.");
+
         development_runtime_result
     }
 
+    /// Runs the development runtime loop, handling events from various sources.
     async fn development_runtime(
         &mut self,
         working_dir: &PathBuf,
@@ -310,6 +460,19 @@ impl GaladrielRuntime {
         Ok(())
     }
 
+    /// Handles events received from the Shellscape terminal and triggers the appropriate actions.
+    ///
+    /// # Parameters
+    /// - `working_dir`: The working directory path of the application.
+    /// - `shellscape`: A mutable reference to the Shellscape instance.
+    /// - `event`: The specific event emitted by Shellscape to be handled.
+    /// - `shellscape_app`: A mutable reference to the ShellscapeApp instance.
+    /// - `matcher`: A shared, thread-safe reference to the Override matcher configuration.
+    /// - `palantir_sender`: Broadcast sender for sending Galadriel alerts.
+    /// - `pipeline_sender`: Broadcast sender for sending Galadriel events.
+    ///
+    /// # Returns
+    /// - `ShellscapeCommands`: The command to be executed as a result of processing the event.
     async fn handle_shellscape_event(
         &mut self,
         working_dir: &PathBuf,
@@ -323,9 +486,11 @@ impl GaladrielRuntime {
         // Match the event to its corresponding Shellscape command.
         match shellscape.match_shellscape_event(event) {
             ShellscapeCommands::Terminate => {
+                // Handle termination command.
                 return ShellscapeCommands::Terminate;
             }
             ShellscapeCommands::ResetAllAsts => {
+                // Restore abstract syntax trees to their default state.
                 self.restore_abstract_syntax_trees_to_default(
                     working_dir,
                     matcher,
@@ -335,18 +500,23 @@ impl GaladrielRuntime {
                 .await;
             }
             ShellscapeCommands::ScrollNotificationsUp => {
+                // Scroll notifications upwards.
                 shellscape_app.reset_alerts_scroll_down();
             }
             ShellscapeCommands::ScrollNotificationsDown => {
+                // Scroll notifications downwards.
                 shellscape_app.reset_alerts_scroll_up();
             }
             ShellscapeCommands::ScrollDockUp => {
+                // Scroll dock upwards.
                 shellscape_app.reset_dock_scroll_down();
             }
             ShellscapeCommands::ScrollDockDown => {
+                // Scroll dock downwards.
                 shellscape_app.reset_dock_scroll_up();
             }
             ShellscapeCommands::ToggleResetStyles => {
+                // Toggle reset styles and update configurations.
                 switch_reset_styles();
 
                 if let Err(err) = self.replace_configurations_file().await {
@@ -355,6 +525,7 @@ impl GaladrielRuntime {
                 }
             }
             ShellscapeCommands::ToggleMinifiedStyles => {
+                // Toggle minified styles and update configurations.
                 switch_minified_styles();
 
                 if let Err(err) = self.replace_configurations_file().await {
@@ -363,6 +534,7 @@ impl GaladrielRuntime {
                 }
             }
             ShellscapeCommands::ToggleAutoNaming => {
+                // Toggle auto-naming feature and update configurations.
                 switch_auto_naming();
 
                 if let Err(err) = self.replace_configurations_file().await {
@@ -371,24 +543,32 @@ impl GaladrielRuntime {
                 }
             }
             ShellscapeCommands::ClearAlertsTable => {
+                // Clear all alerts from the alerts cache.
                 shellscape_app.clear_alerts();
             }
             ShellscapeCommands::VewShortcuts => {
+                // Display keyboard shortcuts in the alerts table.
                 shellscape_app.add_shortcut_alert();
             }
             ShellscapeCommands::ViewLicense => {
+                // Display license information in the alerts table.
                 shellscape_app.add_license_alert();
             }
             ShellscapeCommands::MakeDonation => {
+                // Display donation information in the alerts table.
                 shellscape_app.add_donation_alert();
             }
             ShellscapeCommands::ContributeAsDev => {
+                // Display contribution information in the alerts table.
                 shellscape_app.add_contribute_alert();
             }
             ShellscapeCommands::AboutAuthor => {
+                // Display information about the author in the alerts table.
                 shellscape_app.add_about_author_alert();
             }
             ShellscapeCommands::ScrollUp { column, row } => {
+                // Handle scrolling up based on the event's column and row.
+
                 // Get the current areas for the dock and alerts
                 let dock_area = shellscape_app.get_dock_area();
                 let notify_area = shellscape_app.get_alerts_area();
@@ -417,6 +597,8 @@ impl GaladrielRuntime {
                 }
             }
             ShellscapeCommands::ScrollDown { column, row } => {
+                // Handle scrolling down based on the event's column and row.
+
                 // Get the current areas for the dock and alerts
                 let dock_area = shellscape_app.get_dock_area();
                 let notify_area = shellscape_app.get_alerts_area();
@@ -465,24 +647,28 @@ impl GaladrielRuntime {
     ) {
         tracing::info!("Starting restoration of abstract syntax trees to default state.");
 
-        // Restore the abstract syntax trees (ASTs) to their default state.
+        // Step 1: Reset ASTs to their default state.
         restore_abstract_syntax_trees();
 
         tracing::info!(
             "Reprocessing Nenyr contexts to repopulate abstract syntax trees with updated styles."
         );
 
-        // Initialize a `Synthesizer` to process styles with the restored ASTs.
+        // Step 2: Create a `Synthesizer` to process styles with the restored ASTs.
         Synthesizer::new(true, matcher, palantir_sender.clone())
             .process(get_minified_styles(), working_dir)
             .await;
 
-        // Send the events.
+        // Step 3: Notify the server to refresh the application.
         self.send_event_to_server(GaladrielEvents::RefreshCSS, pipeline_sender.clone());
         self.send_event_to_server(GaladrielEvents::RefreshFromRoot, pipeline_sender.clone());
     }
 
-    /// Sends a specific event to the server through the pipeline.
+    /// Sends a specific event to the server.
+    ///
+    /// # Arguments
+    /// * `event` - The event to be sent to the server.
+    /// * `pipeline_sender` - The broadcast channel to send the event through.
     fn send_event_to_server(
         &self,
         event: GaladrielEvents,
@@ -529,7 +715,13 @@ impl GaladrielRuntime {
         Ok(local_addr.port())
     }
 
+    /// Replaces the configuration file with updated settings.
+    ///
+    /// # Returns
+    /// * `GaladrielResult<()>` - Indicates success or provides an error if the process fails.
     async fn replace_configurations_file(&mut self) -> GaladrielResult<()> {
+        tracing::info!("Starting configuration file replacement.");
+
         let config_path = self.working_dir.join("galadriel.config.json");
         let serialized_configs = transform_configatron_to_json()?;
 

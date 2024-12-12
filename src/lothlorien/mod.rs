@@ -7,7 +7,7 @@ use futures::{
     SinkExt, StreamExt,
 };
 use rand::Rng;
-use request::{ContextType, Request, RequestType, ServerRequest};
+use request::{ContextType, ReceivedClientRequest, Request, RequestType, ServerRequest};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{
@@ -540,17 +540,19 @@ impl LothlorienPipeline {
         let send_to_client = match event {
             // If the event is "RefreshCSS", prepare a message to refresh the CSS on the client.
             GaladrielEvents::RefreshCSS => {
-                format!("refresh-css;{}", get_updated_css())
+                Self::format_client_json("refresh-css", &get_updated_css())
             }
             // If the event is "RefreshFromRoot", prepare a message to refresh the application starting from the root.
-            GaladrielEvents::RefreshFromRoot => "refresh-from-root".to_string(),
+            GaladrielEvents::RefreshFromRoot => {
+                Self::format_client_json("refresh-from-root", "none")
+            }
             // If the event is "RefreshComponent", prepare a message to refresh a single component in the application.
             GaladrielEvents::RefreshComponent(file_file) => {
-                format!("refresh-component;{}", file_file)
+                Self::format_client_json("refresh-component", &file_file)
             }
             // If the event is "RefreshFromLayoutParent", prepare a message to refresh components starting from the folder path.
             GaladrielEvents::RefreshFromLayoutParent(folder_path) => {
-                format!("refresh-from-layout-parent;{}", folder_path)
+                Self::format_client_json("refresh-from-layout-parent", &folder_path)
             }
             _ => return,
         };
@@ -564,6 +566,11 @@ impl LothlorienPipeline {
             stream_sender,
         )
         .await;
+    }
+
+    // Formats an JSON to be sent to the connected client.
+    fn format_client_json(action: &str, data: &str) -> String {
+        format!("{{\"action\": {:?}, \"data\": {:?}}}", action, data)
     }
 
     /// Accepts an incoming TCP stream and upgrades it to a WebSocket connection.
@@ -733,7 +740,7 @@ impl LothlorienPipeline {
                 return Self::process_text_response(text_response);
             }
             Message::Close(_) => {
-                return Ok(ServerRequest::new("".to_string(), Request::BreakConnection));
+                return Ok(ServerRequest::new(Request::BreakConnection));
             }
             _ => {}
         }
@@ -757,51 +764,32 @@ impl LothlorienPipeline {
     /// - `GaladrielResult<ServerRequest>`: A server request object if parsing and validation succeed,
     ///   or an error wrapped in `GaladrielResult` if any validation fails.
     fn process_text_response(text_response: &str) -> GaladrielResult<ServerRequest> {
-        // Split the response string by semicolon and collect into a vector of strings
-        let tokens: Vec<String> = text_response.split(";").map(|v| v.to_owned()).collect();
-
-        // Ensure there are at least two tokens: `request type` and `client name`
-        Self::token_less_than(
-            2,
-            &tokens,
-            ErrorKind::MissingRequestTokens,
-            ErrorAction::Ignore,
-            "The integration client submitted an invalid request format: Expected at least 2 tokens but received fewer. Please provide both a `request type` and a `client name`, separated by a semicolon (`;`). For example: `fetch-updated-css;Client Name`.",
-        )?;
-
-        tracing::debug!("Processing request with tokens: {:?}", tokens);
-
-        // Extract the `request type` and `client name` from the tokens
-        let request_type = Self::get_request_type(&tokens[0])?;
-        let client_name = tokens[1].clone();
+        // Parse connected client request.
+        let parsed_request: ReceivedClientRequest =
+            serde_json::from_str(text_response).map_err(|err| {
+                GaladrielError::raise_general_other_error(
+                    ErrorKind::MissingRequestTokens,
+                    &err.to_string(),
+                    ErrorAction::Notify,
+                )
+            })?;
 
         // Handle different types of requests based on the `request_type`
-        match request_type {
+        match parsed_request.action {
             RequestType::FetchUpdatedCSS => {
                 tracing::debug!("Request type: FetchUpdatedCSS");
 
                 // Return a request to fetch updated CSS for the given client
-                return Ok(ServerRequest::new(client_name, Request::FetchUpdatedCSS));
+                return Ok(ServerRequest::new(Request::FetchUpdatedCSS));
             }
             RequestType::CollectClassList => {
-                // If the request type is `CollectClassList`, ensure there are at least 3 tokens
-                Self::token_less_than(
-                    3,
-                    &tokens,
-                    ErrorKind::MissingRequestTokens,
-                    ErrorAction::Ignore,
-                    "The integration client submitted a 'collect-class-list' request missing an additional token for class details. Ensure at least 3 tokens are present.",
-                )?;
-
-                let class_token = tokens[2].clone();
-
                 tracing::debug!(
                     "Request type: CollectClassList with class token: {}",
-                    class_token
+                    parsed_request.data
                 );
 
                 // Call a separate function to handle the class list request
-                return Self::build_collect_class_list_request(class_token, client_name);
+                return Self::build_collect_class_list_request(&parsed_request.data);
             }
         }
     }
@@ -810,14 +798,10 @@ impl LothlorienPipeline {
     ///
     /// # Parameters
     /// - `class_token`: A string containing the class token, expected to be in the format `context_type:class_name`.
-    /// - `client_name`: The name of the client making the request.
     ///
     /// # Returns
     /// A `GaladrielResult<ServerRequest>`. Returns an `Ok(ServerRequest)` if the class token format is valid, or an error if the format is incorrect.
-    fn build_collect_class_list_request(
-        class_token: String,
-        client_name: String,
-    ) -> GaladrielResult<ServerRequest> {
+    fn build_collect_class_list_request(class_token: &str) -> GaladrielResult<ServerRequest> {
         // Split the class token by colon (:) into a vector
         let target_class: Vec<String> = class_token.split(":").map(|v| v.to_owned()).collect();
 
@@ -848,7 +832,7 @@ impl LothlorienPipeline {
                 tracing::debug!("Context type: Central");
 
                 // Return the request for the Central context
-                return Ok(ServerRequest::new(client_name, request));
+                return Ok(ServerRequest::new(request));
             }
             _ => {
                 // For non-Central contexts, ensure there are at least 3 tokens: `context_type`, `context_name`, and `class_name`
@@ -875,7 +859,7 @@ impl LothlorienPipeline {
                 let request =
                     Request::new_class_list_request(context_type, Some(context_name), class_name);
 
-                return Ok(ServerRequest::new(client_name, request));
+                return Ok(ServerRequest::new(request));
             }
         }
     }
@@ -910,47 +894,6 @@ impl LothlorienPipeline {
         }
 
         Ok(())
-    }
-
-    /// Retrieves the request type based on the provided `request_token`.
-    ///
-    /// # Arguments
-    ///
-    /// * `request_token` - A string slice that represents the request token.
-    ///
-    /// # Returns
-    ///
-    /// This function returns a `GaladrielResult<RequestType>`. If the token is valid,
-    /// it returns the corresponding `RequestType` variant. Otherwise, it returns an error.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `GaladrielError` if the request token is invalid.
-    fn get_request_type(request_token: &str) -> GaladrielResult<RequestType> {
-        match request_token {
-            // If the token matches "collect-class-list", return `RequestType::CollectClassList`.
-            "collect-class-list" => {
-                tracing::debug!("Request token: collect-class-list");
-
-                Ok(RequestType::CollectClassList)
-            }
-            // If the token matches "fetch-updated-css", return `RequestType::FetchUpdatedCSS`.
-            "fetch-updated-css" => {
-                tracing::debug!("Request token: fetch-updated-css");
-
-                Ok(RequestType::FetchUpdatedCSS)
-            }
-            // If the token is neither of the above, log an error and return a pipeline error.
-            _ => {
-                tracing::error!("The integration client submitted an invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token);
-
-                return Err(GaladrielError::raise_general_pipeline_error(
-                    ErrorKind::RequestTokenInvalid,
-                    &format!("The integration client submitted an invalid request token: '{}'. Expected one of 'collect-class-list' or 'fetch-updated-css'.", request_token),
-                    ErrorAction::Ignore,
-                ));
-            }
-        }
     }
 
     /// Retrieves the context type based on the provided `context_token`.
@@ -1000,9 +943,8 @@ impl LothlorienPipeline {
         }
     }
 
+    // Process connected client request.
     fn process_request(request: ServerRequest) -> String {
-        let _client_name = request.client_name;
-
         match request.request {
             Request::CollectClassList {
                 context_type,
@@ -1108,7 +1050,7 @@ mod tests {
 
     use crate::{
         error::ErrorKind,
-        lothlorien::request::{ContextType, Request, RequestType},
+        lothlorien::request::{ContextType, Request},
     };
 
     use super::LothlorienPipeline;
@@ -1153,14 +1095,12 @@ mod tests {
 
     #[test]
     fn test_process_response_valid_fetch_updated_css() {
-        let message = Message::Text("fetch-updated-css;ClientA".to_string());
+        let message = Message::Text("{ \"action\": \"fetch-updated-css\", \"data\": \"\" }".to_string());
         let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_ok());
 
         if let Ok(server_request) = result {
-            assert_eq!(server_request.client_name, "ClientA");
-
             match server_request.request {
                 Request::FetchUpdatedCSS => {}
                 _ => panic!("Expected FetchUpdatedCSS request type"),
@@ -1170,7 +1110,7 @@ mod tests {
 
     #[test]
     fn test_process_response_invalid_format_missing_token() {
-        let message = Message::Text("fetch-updated-css".to_string());
+        let message = Message::Text("{ \"action\": \"fetch-update-css\" }".to_string());
         let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_err());
@@ -1182,15 +1122,15 @@ mod tests {
 
     #[test]
     fn test_process_response_valid_collect_class_list() {
-        let message =
-            Message::Text("collect-class-list;ClientB;@module:context_name:class_name".to_string());
+        let message = Message::Text(
+            "{ \"action\": \"collect-class-list\", \"data\": \"@module:context_name:class_name\" }"
+                .to_string(),
+        );
         let result = LothlorienPipeline::process_response(&message);
 
         assert!(result.is_ok());
 
         if let Ok(server_request) = result {
-            assert_eq!(server_request.client_name, "ClientB");
-
             match server_request.request {
                 Request::CollectClassList {
                     context_type,
@@ -1220,16 +1160,11 @@ mod tests {
 
     #[test]
     fn test_build_collect_class_list_request_valid_central() {
-        let result = LothlorienPipeline::build_collect_class_list_request(
-            "@class:class_name".to_string(),
-            "ClientD".to_string(),
-        );
+        let result = LothlorienPipeline::build_collect_class_list_request("@class:class_name");
 
         assert!(result.is_ok());
 
         if let Ok(server_request) = result {
-            assert_eq!(server_request.client_name, "ClientD");
-
             match server_request.request {
                 Request::CollectClassList {
                     context_type,
@@ -1246,10 +1181,7 @@ mod tests {
 
     #[test]
     fn test_build_collect_class_list_request_invalid_class_token() {
-        let result = LothlorienPipeline::build_collect_class_list_request(
-            "central".to_string(),
-            "ClientE".to_string(),
-        );
+        let result = LothlorienPipeline::build_collect_class_list_request("central");
 
         assert!(result.is_err());
 
@@ -1260,16 +1192,12 @@ mod tests {
 
     #[test]
     fn test_build_collect_class_list_request_non_central() {
-        let result = LothlorienPipeline::build_collect_class_list_request(
-            "@layout:context_name:class_name".to_string(),
-            "ClientF".to_string(),
-        );
+        let result =
+            LothlorienPipeline::build_collect_class_list_request("@layout:context_name:class_name");
 
         assert!(result.is_ok());
 
         if let Ok(server_request) = result {
-            assert_eq!(server_request.client_name, "ClientF");
-
             match server_request.request {
                 Request::CollectClassList {
                     context_type,
@@ -1287,33 +1215,13 @@ mod tests {
 
     #[test]
     fn test_build_collect_class_list_request_invalid_non_central() {
-        let result = LothlorienPipeline::build_collect_class_list_request(
-            "context_type:context_name".to_string(),
-            "ClientG".to_string(),
-        );
+        let result =
+            LothlorienPipeline::build_collect_class_list_request("context_type:context_name");
 
         assert!(result.is_err());
         if let Err(error) = result {
             assert_eq!(error.get_kind(), ErrorKind::RequestTokenInvalid);
         }
-    }
-
-    #[test]
-    fn test_get_request_type_valid_collect_class_list() {
-        let result = LothlorienPipeline::get_request_type("collect-class-list");
-        assert_eq!(result, Ok(RequestType::CollectClassList));
-    }
-
-    #[test]
-    fn test_get_request_type_valid_fetch_updated_css() {
-        let result = LothlorienPipeline::get_request_type("fetch-updated-css");
-        assert_eq!(result, Ok(RequestType::FetchUpdatedCSS));
-    }
-
-    #[test]
-    fn test_get_request_type_invalid_token() {
-        let result = LothlorienPipeline::get_request_type("invalid-token");
-        assert!(result.is_err());
     }
 
     #[test]

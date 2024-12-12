@@ -1,5 +1,50 @@
+use serde::{
+    self,
+    de::{Deserializer, Error as DeError},
+    Deserialize, Serialize,
+};
+
+// Define a structure `ReceivedClientRequest` to represent client requests.
+//
+// The structure includes:
+// - `action`: The type of request the client is making, deserialized with a custom function `tokenize_action`.
+// - `data`: A string containing additional information for the request.
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct ReceivedClientRequest {
+    // The type of action requested by the client.
+    // Custom deserialization ensures only valid actions are accepted.
+    #[serde(deserialize_with = "tokenize_action")]
+    pub action: RequestType,
+    // A string field for additional request data.
+    pub data: String,
+}
+
+// Custom deserialization function for the `action` field in `ReceivedClientRequest`.
+//
+// This function ensures that the `action` field is parsed into a valid `RequestType` enum variant
+// or returns a detailed error if the value is unrecognized.
+fn tokenize_action<'de, D>(deserializer: D) -> Result<RequestType, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let action = String::deserialize(deserializer)?;
+
+    match action.as_str() {
+        "fetch-updated-css" => Ok(RequestType::FetchUpdatedCSS),
+        "collect-class-list" => Ok(RequestType::CollectClassList),
+        _ => Err(D::Error::custom(format!(
+            "Invalid action received: '{}'.\n\
+             Expected one of the following actions:\n\
+             - 'fetch-updated-css': This action retrieves the latest CSS updates.\n\
+             - 'collect-class-list': This action gathers the list of CSS classes currently in use by a component.\n\
+             Please ensure the 'action' field is correctly set in your request.",
+            action
+        ))),
+    }
+}
+
 /// Represents the type of request a client can make.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Serialize, Debug)]
 pub enum RequestType {
     /// Request to collect the list of CSS classes.
     CollectClassList,
@@ -60,11 +105,9 @@ impl Request {
     }
 }
 
-/// Represents a server-side request, including the client's name and the associated request.
+/// Represents a server-side request.
 #[derive(Clone, PartialEq, Debug)]
 pub struct ServerRequest {
-    /// The name of the client making the request.
-    pub client_name: String,
     /// The request that the client is making.
     pub request: Request,
 }
@@ -80,11 +123,8 @@ impl ServerRequest {
     /// # Returns
     ///
     /// A new `ServerRequest` instance with the provided client name and request.
-    pub fn new(client_name: String, request: Request) -> Self {
-        Self {
-            client_name,
-            request,
-        }
+    pub fn new(request: Request) -> Self {
+        Self { request }
     }
 }
 
@@ -173,11 +213,8 @@ mod tests {
 
     #[test]
     fn test_server_request_creation() {
-        let client_name = "client_1".to_string();
         let request = Request::FetchUpdatedCSS;
-        let server_request = ServerRequest::new(client_name.clone(), request.clone());
-
-        assert_eq!(server_request.client_name, client_name);
+        let server_request = ServerRequest::new(request.clone());
 
         match server_request.request {
             Request::FetchUpdatedCSS => {}
@@ -187,16 +224,13 @@ mod tests {
 
     #[test]
     fn test_server_request_with_collect_class_list() {
-        let client_name = "client_2".to_string();
         let request = Request::CollectClassList {
             context_type: ContextType::Layout,
             context_name: Some("layout_context".to_string()),
             class_name: "layout_class".to_string(),
         };
 
-        let server_request = ServerRequest::new(client_name.clone(), request.clone());
-
-        assert_eq!(server_request.client_name, client_name);
+        let server_request = ServerRequest::new(request.clone());
 
         match server_request.request {
             Request::CollectClassList {

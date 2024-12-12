@@ -6,7 +6,7 @@ use galadrielcss::{
 };
 
 fn get_usage_message() -> String {
-    "Usage:\n    galadrielcss <mode>\n\nAvailable modes:\n    'start'   - Launches the development server\n    'build'   - Compiles the project for production\n    'update'  - Updates Galadriel CSS to the latest version".to_string()
+    "Usage:\n    galadrielcss <mode>\n\nAvailable modes:\n    'start'   - Launches the development server\n    'build'   - Compiles the project for production".to_string()
 }
 
 /// Main asynchronous function serving as the entry point for Galadriel CSS runtime.
@@ -27,9 +27,7 @@ async fn main() -> GaladrielResult<()> {
     // Match on the next argument to determine the runtime mode (`start` or `build`).
     match args.next() {
         // Check if the mode is valid (either "start" or "build").
-        Some(runtime_kind)
-            if runtime_kind == "start" || runtime_kind == "build" || runtime_kind == "update" =>
-        {
+        Some(runtime_kind) if runtime_kind == "start" || runtime_kind == "build" => {
             // Get the current working directory to use as the runtime base directory.
             let current_dir = std::env::current_dir().map_err(|err| {
                 GaladrielError::raise_general_runtime_error(
@@ -42,10 +40,8 @@ async fn main() -> GaladrielResult<()> {
             // Determine runtime mode based on the argument received.
             let runtime_mode = if runtime_kind == "start" {
                 GaladrielRuntimeKind::Development
-            } else if runtime_kind == "build" {
-                GaladrielRuntimeKind::Build
             } else {
-                GaladrielRuntimeKind::Update
+                GaladrielRuntimeKind::Build
             };
 
             // Determine runtime mode based on the argument received.
@@ -77,7 +73,7 @@ async fn main() -> GaladrielResult<()> {
 
             Err(GaladrielError::raise_general_runtime_error(
                 ErrorKind::MissingGaladrielModeError,
-                "No mode specified. Please provide a valid mode ('start', 'build', or 'update').",
+                "No mode specified. Please provide a valid mode ('start', or 'build').",
                 ErrorAction::Exit,
             ))
         }
