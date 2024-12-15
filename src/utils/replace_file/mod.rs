@@ -7,6 +7,8 @@ use crate::{
     GaladrielResult,
 };
 
+use super::set_file_times::set_file_times;
+
 /// Replaces the contents of a file with the provided text.
 ///
 /// This asynchronous function opens a file at the given `file_path`, truncates its content,
@@ -47,7 +49,7 @@ pub async fn replace_file(
     let mut file = OpenOptions::new()
         .write(true) // Open file with write permissions.
         .truncate(true) // Truncate the file content upon opening.
-        .open(file_path) // Path of the file to open.
+        .open(&file_path) // Path of the file to open.
         .await // Asynchronous file operation.
         .map_err(|err| {
             // Map any error encountered during file opening to a GaladrielError.
@@ -77,6 +79,8 @@ pub async fn replace_file(
             ErrorAction::Notify,
         )
     })?;
+
+    set_file_times(&file_path)?;
 
     Ok(())
 }

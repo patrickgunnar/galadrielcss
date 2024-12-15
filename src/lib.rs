@@ -122,7 +122,6 @@ mod shellscape;
 mod synthesizer;
 mod trailblazer;
 mod types;
-mod updates;
 mod utils;
 
 /// Represents the runtime modes of Galadriel CSS.
@@ -301,12 +300,12 @@ impl GaladrielRuntime {
 
         tracing::debug!("Initialized Shellscape UI and application state.");
 
-        // Initialize the Lothlórien pipeline (actix-web server for Galadriel CSS).
-        let mut pipeline = Lothlorien::new(&get_port(), palantir_sender.clone());
-        let listener = pipeline.create_socket_addr().await?;
-        let socket_addr = self.get_local_addr_from_listener(&listener)?;
-        let socket_port = socket_addr.port();
-        let _server_handler = pipeline.stream_sync(listener);
+        // Initialize the Lothlórien pipeline (axum server for Galadriel CSS).
+        let mut pipeline = Lothlorien::new(&get_port(), palantir_sender.clone()); // Create a new instance of Lothlórien, passing the port and a clone of the palantir_sender for communication.
+        let listener = pipeline.create_listener().await?; // Asynchronously create a TCP listener for the pipeline, binding it to the socket address.
+        let socket_addr = self.get_local_addr_from_listener(&listener)?; // Retrieve the local address (IP and port) of the listener to know where the server is bound.
+        let socket_port = socket_addr.port(); // Extract the port number from the socket address for further use.
+        let _server_handler = pipeline.stream_sync(listener); // Start the axum server with the listener, handling incoming requests asynchronously.
 
         tracing::debug!(port = %socket_port, "Initialized Lothlórien server.");
         tracing::info!("Started server pipeline for Lothlórien.");
@@ -677,7 +676,9 @@ impl GaladrielRuntime {
         .await
     }
 
+    // Retrieves the local address of the provided TCP listener.
     fn get_local_addr_from_listener(&self, listener: &TcpListener) -> GaladrielResult<SocketAddr> {
+        // Attempt to fetch the local address associated with the listener.
         listener.local_addr().map_err(|err| {
             GaladrielError::raise_critical_runtime_error(
                 ErrorKind::ServerLocalAddrFetchFailed,

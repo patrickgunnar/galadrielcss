@@ -35,41 +35,51 @@ pub enum ContextType {
     Module,
 }
 
+// Structure to deserialize utility collection parameters from HTTP requests.
 #[derive(Deserialize)]
 struct CollectUtilityParams {
-    context_type: String,
-    context_name: String,
-    class_name: String,
+    context_type: String, // Type of the context (e.g., "class", "layout").
+    context_name: String, // Name of the context.
+    class_name: String,   // Name of the class to be collected.
 }
 
+// Main server struct representing the Lothlorien server.
 #[derive(Debug)]
 pub struct Lothlorien {
+    // Channel sender for server events.
     lothlorien_sender: mpsc::UnboundedSender<GaladrielEvents>,
     lothlorien_receiver: mpsc::UnboundedReceiver<GaladrielEvents>,
 
+    // Broadcast sender for notifications.
     palantir_sender: broadcast::Sender<GaladrielAlerts>,
+    // Socket address for the server.
     socket_addr: String,
+    // Path to the temporary folder for storing server metadata.
     temp_folder: PathBuf,
 }
 
 #[allow(dead_code)]
 impl Lothlorien {
+    // Constructor to create a new instance of the Lothlorien server.
     pub fn new(port: &str, palantir_sender: broadcast::Sender<GaladrielAlerts>) -> Self {
+        // Create an unbounded channel for communication between the main runtime and server components.
         let (lothlorien_sender, lothlorien_receiver) = mpsc::unbounded_channel();
 
         Self {
-            socket_addr: format!("127.0.0.1:{}", port),
-            temp_folder: env::temp_dir(),
+            socket_addr: format!("127.0.0.1:{}", port), // Initialize the server's socket address.
+            temp_folder: env::temp_dir(),               // Set the temporary folder path.
             lothlorien_sender,
             lothlorien_receiver,
             palantir_sender,
         }
     }
 
+    // Getter for the server's sender channel.
     pub fn get_sender(&self) -> mpsc::UnboundedSender<GaladrielEvents> {
         self.lothlorien_sender.clone()
     }
 
+    // Asynchronous method to receive the next server event.
     pub async fn next(&mut self) -> GaladrielResult<GaladrielEvents> {
         self.lothlorien_receiver.recv().await.ok_or_else(|| {
             GaladrielError::raise_general_pipeline_error(
@@ -80,13 +90,19 @@ impl Lothlorien {
         })
     }
 
+    // Register the server port in a temporary file.
     pub async fn register_server_port_in_temp(&self, port: u16) -> GaladrielResult<()> {
+        tracing::info!("Registering server port {} in temp file.", port);
+
+        // Construct the temp file path.
         let temp_file = self.temp_folder.join(GALADRIEL_TEMP_FILE_NAME);
 
+        tracing::debug!("Temporary file path: {:?}", temp_file);
+
         write_file(
-            self.temp_folder.clone(),
-            temp_file,
-            format!("{port}"),
+            self.temp_folder.clone(), // Temporary folder path.
+            temp_file,                // Target temp file.
+            format!("{port}"),        // Write the port number to the file.
             ErrorAction::Exit,
             ErrorKind::ServerPortRegistrationFailed,
             ErrorKind::ServerPortWriteError,
@@ -94,10 +110,17 @@ impl Lothlorien {
         .await
     }
 
+    // Remove the temporary file containing the server port.
     pub async fn remove_server_port_in_temp(&self) -> GaladrielResult<()> {
+        // Locate the temp file.
         let temp_file = self.temp_folder.join(GALADRIEL_TEMP_FILE_NAME);
 
+        tracing::info!("Attempting to remove temp file: {:?}", temp_file);
+
         if temp_file.exists() {
+            tracing::debug!("Temp file exists. Proceeding with removal.");
+
+            // Check if the file exists and remove it if it does.
             fs::remove_file(temp_file).await.map_err(|err| {
                 GaladrielError::raise_general_pipeline_error(
                     ErrorKind::ServerPortRemovalFailed,
@@ -110,7 +133,10 @@ impl Lothlorien {
         Ok(())
     }
 
-    pub async fn create_socket_addr(&self) -> GaladrielResult<TcpListener> {
+    // Create a TCP listener bound to the server's socket address.
+    pub async fn create_listener(&self) -> GaladrielResult<TcpListener> {
+        tracing::info!("Creating listener...");
+
         tokio::net::TcpListener::bind(self.socket_addr.clone())
             .await
             .map_err(|err| {
@@ -122,21 +148,28 @@ impl Lothlorien {
             })
     }
 
+    // Start the server's main event stream and set up routes.
     pub fn stream_sync(&self, socket_addr: TcpListener) -> JoinHandle<()> {
+        tracing::info!("Starting server stream synchronization.");
+
         let lothlorien_sender = self.lothlorien_sender.clone();
         let palantir_sender = self.palantir_sender.clone();
 
         tokio::spawn(async move {
-            let lothlorien_sender = lothlorien_sender.clone();
-            let palantir_sender = palantir_sender.clone();
+            tracing::info!("Configuring Axum server routes.");
 
             let app = Router::new()
+                // Define a route for fetching CSS files.
                 .route("/fetch-css", routing::get(Self::fetch_css))
+                // Define a route for collecting utility class names.
                 .route(
                     "/collect-utility-class-names/:context_type/:context_name/:class_name",
                     routing::get(Self::collect_utility_names),
                 );
 
+            tracing::info!("Starting Axum server with graceful shutdown.");
+
+            // Start the Axum server with graceful shutdown support.
             let app_server = axum::serve(socket_addr, app).with_graceful_shutdown(
                 Self::shutdown_signal(palantir_sender.clone(), lothlorien_sender.clone()),
             );
@@ -147,9 +180,14 @@ impl Lothlorien {
                 palantir_sender.clone(),
             );
 
+            // Handle server start errors.
             match app_server.await {
-                Ok(()) => {}
+                Ok(()) => {
+                    tracing::info!("Axum server shut down gracefully.");
+                }
                 Err(err) => {
+                    tracing::error!("Axum server encountered an error: {}", err);
+
                     Self::send_galadriel_error(
                         err,
                         ErrorKind::ServerBidingError,
@@ -160,17 +198,21 @@ impl Lothlorien {
         })
     }
 
+    // Handles a request to fetch the latest CSS.
     async fn fetch_css() -> String {
         get_updated_css()
     }
 
+    // Handles a request to collect utility class names based on context type and parameters.
     async fn collect_utility_names(Path(params): Path<CollectUtilityParams>) -> String {
+        // Destructure the incoming parameters.
         let CollectUtilityParams {
             context_type,
             context_name,
             class_name,
         } = params;
 
+        // Match the context type to determine its specific configuration.
         let (context_type, context_name, class_name) = match context_type.as_str() {
             "@class" => (ContextType::Central, None, context_name),
             "@layout" => (ContextType::Layout, Some(context_name), class_name),
@@ -178,9 +220,11 @@ impl Lothlorien {
             _ => return "".to_string(),
         };
 
+        // Fetch and return the utility class names based on the context.
         get_utility_class_names(context_type, context_name, class_name)
     }
 
+    // Awaits a shutdown signal and gracefully stops the server.
     async fn shutdown_signal(
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
         lothlorien_sender: mpsc::UnboundedSender<GaladrielEvents>,
@@ -193,6 +237,7 @@ impl Lothlorien {
         }
     }
 
+    // Sends an error event using the Lothlórien sender channel.
     fn send_galadriel_error(
         err: std::io::Error,
         error_kind: ErrorKind,
@@ -207,10 +252,14 @@ impl Lothlorien {
         );
 
         if let Err(err) = lothlorien_sender.send(GaladrielEvents::Error(error)) {
-            tracing::error!("{:?}", err);
+            tracing::error!(
+                "Something went wrong while sending Galadriel event: {:?}",
+                err
+            );
         }
     }
 
+    // Generates a random motivational server startup message.
     fn random_server_subheading_message() -> String {
         let messages = [
             "The light of Eärendil shines. Lothlórien is ready to begin your journey.",

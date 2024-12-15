@@ -30,9 +30,9 @@ use crate::{
     intaker::remove_context_from_intaker::remove_context_from_intaker,
     synthesizer::Synthesizer,
     trailblazer::Trailblazer,
-    updates::file_timestamp_updater::FileTimestampUpdater,
     utils::{
-        inject_names::inject_names, is_nenyr_event::is_nenyr_event,
+        file_timestamp_updater::FileTimestampUpdater, inject_names::inject_names,
+        is_nenyr_event::is_nenyr_event,
         send_palantir_error_notification::send_palantir_error_notification,
         send_palantir_notification::send_palantir_notification,
         send_palantir_success_notification::send_palantir_success_notification,

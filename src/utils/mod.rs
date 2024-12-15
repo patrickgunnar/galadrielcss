@@ -1,3 +1,4 @@
+pub mod file_timestamp_updater;
 pub mod generates_node_styles;
 pub mod generates_words;
 pub mod get_nenyr_syntax;
@@ -13,4 +14,5 @@ pub mod send_palantir_error_notification;
 pub mod send_palantir_notification;
 pub mod send_palantir_success_notification;
 pub mod serialize_classes_tracking;
+pub mod set_file_times;
 pub mod write_file;

@@ -97,11 +97,13 @@ impl ShellscapeApp {
         // Find the "Nenyr" syntax in the syntax set
         let syntax = syntax_set
             .find_syntax_by_name("Nenyr")
-            .ok_or(GaladrielError::raise_general_interface_error(
-                ErrorKind::NenyrSyntaxMissing,
-                "The Nenyr syntax could not be found in the syntax set.",
-                ErrorAction::Exit,
-            ))?
+            .ok_or_else(|| {
+                GaladrielError::raise_general_interface_error(
+                    ErrorKind::NenyrSyntaxMissing,
+                    "The Nenyr syntax could not be found in the syntax set.",
+                    ErrorAction::Exit,
+                )
+            })?
             .to_owned();
 
         // Return a new ShellscapeApp instance with the configured values
