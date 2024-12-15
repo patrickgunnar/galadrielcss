@@ -75,7 +75,15 @@ impl Astroform {
 
         // Iterate over each context in the variables map.
         for (context_name, context_variables) in variables_map {
-            tracing::trace!("Processing context '{}'", context_name);
+            tracing::trace!("Transforming variables for context '{}'", context_name);
+
+            // Transform the variables for the current context.
+            let transformed_variables =
+                Self::transform_context_variables(tab, space, newline, tab_size, context_variables);
+
+            if transformed_variables.is_empty() {
+                continue;
+            }
 
             if !is_minified {
                 // Resolve the context name and add a comment in the CSS for non-minified output.
@@ -88,13 +96,11 @@ impl Astroform {
                 ));
             }
 
-            tracing::trace!("Transforming variables for context '{}'", context_name);
-
-            // Transform the variables for the current context.
-            let transformed_variables =
-                Self::transform_context_variables(tab, space, newline, tab_size, context_variables);
-
             variables_rules.push(transformed_variables);
+        }
+
+        if variables_rules.is_empty() {
+            return String::new();
         }
 
         // Combine all variables into a single `:root` block.

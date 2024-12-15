@@ -532,6 +532,7 @@ pub enum ErrorKind {
     AccessDeniedToStylitronAST,
     AccessDeniedToClassinatorAST,
     ContextNameConflict,
+    ServerBidingError,
     Other,
 }
 

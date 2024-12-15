@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 use crate::{
     asts::CLASTRACK, intaker::intaker_contains_context_name::intaker_contains_context_name,
-    lothlorien::request::ContextType, types::Clastrack,
+    lothlorien::ContextType, types::Clastrack,
 };
 
 /// Retrieves a utility class names based on the provided context type, context name, and class name.

@@ -5,11 +5,7 @@ use crate::error::GaladrielError;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum GaladrielEvents {
-    RefreshCSS,
-    RefreshFromRoot,
     Error(GaladrielError),
-    RefreshComponent(String),
-    RefreshFromLayoutParent(String),
 }
 
 #[allow(dead_code)]

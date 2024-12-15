@@ -66,6 +66,10 @@ impl Astroform {
                         schema_variables,
                     );
 
+                    if formatted_variables.is_empty() {
+                        continue;
+                    }
+
                     // Check if the theme is "light" or "dark" and add the appropriate variables.
                     if theme_schema == "light" {
                         // Add a comment for the light theme if not minified.

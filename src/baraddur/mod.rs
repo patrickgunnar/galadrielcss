@@ -30,6 +30,7 @@ use crate::{
     intaker::remove_context_from_intaker::remove_context_from_intaker,
     synthesizer::Synthesizer,
     trailblazer::Trailblazer,
+    updates::file_timestamp_updater::FileTimestampUpdater,
     utils::{
         inject_names::inject_names, is_nenyr_event::is_nenyr_event,
         send_palantir_error_notification::send_palantir_error_notification,
@@ -530,10 +531,9 @@ impl Baraddur {
             );
 
             // Create and send a success notification to indicate that the watcher is active.
-            let starting_time = Local::now();
             send_palantir_success_notification(
                 &Self::random_watch_message(),
-                starting_time,
+                Local::now(),
                 palantir_sender.clone(),
             );
         }
@@ -642,14 +642,6 @@ impl Baraddur {
                 )
                 .transform()
                 .await;
-
-                // This method triggers a `RefreshCSS` event, which is sent to the main runtime.
-                // The event will then be forwarded to the connected integration client to refresh the CSS
-                // on the application, ensuring that the latest styles are applied.
-                Self::send_event_to_main_runtime(
-                    GaladrielEvents::RefreshCSS,
-                    baraddur_sender.clone(),
-                );
             }
             // Handle errors that occur during event reception.
             Err(err) => {
@@ -920,7 +912,7 @@ impl Baraddur {
         current_path: &PathBuf,
         context_type: Option<CrealionContextType>,
         matcher: Arc<RwLock<overrides::Override>>,
-        baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
+        _baraddur_sender: mpsc::UnboundedSender<GaladrielEvents>,
         palantir_sender: sync::broadcast::Sender<GaladrielAlerts>,
     ) {
         tracing::info!(
@@ -941,17 +933,16 @@ impl Baraddur {
                     match current_path.parent() {
                         // If there is a parent path, send a refresh event to the parent layout.
                         Some(parent_path) => {
-                            let parent_path = parent_path.to_string_lossy().to_string();
+                            let str_path = parent_path.to_string_lossy().to_string();
 
                             tracing::debug!(
                                 "Sending refresh event to parent layout: {:?}",
-                                parent_path
+                                str_path
                             );
 
-                            Self::send_event_to_main_runtime(
-                                GaladrielEvents::RefreshFromLayoutParent(parent_path),
-                                baraddur_sender.clone(),
-                            );
+                            FileTimestampUpdater::new(palantir_sender.clone())
+                                .process_from_folder(parent_path.to_owned(), matcher)
+                                .await;
                         }
                         // If there's no parent path, trigger a refresh event starting from the root.
                         None => {
@@ -959,10 +950,9 @@ impl Baraddur {
                                 "No parent layout path, sending refresh event from root."
                             );
 
-                            Self::send_event_to_main_runtime(
-                                GaladrielEvents::RefreshFromRoot,
-                                baraddur_sender.clone(),
-                            );
+                            FileTimestampUpdater::new(palantir_sender.clone())
+                                .process_from_folder(working_dir.to_owned(), matcher)
+                                .await;
                         }
                     }
                 } else {
@@ -974,10 +964,8 @@ impl Baraddur {
 
                     tracing::debug!("Sending refresh event for component: {:?}", formatted_path);
 
-                    Self::send_event_to_main_runtime(
-                        GaladrielEvents::RefreshComponent(formatted_path),
-                        baraddur_sender.clone(),
-                    );
+                    FileTimestampUpdater::new(palantir_sender.clone())
+                        .process_from_file(PathBuf::from(formatted_path.to_owned()));
                 }
             }
             // If the context type is Central.
@@ -994,16 +982,15 @@ impl Baraddur {
                 send_palantir_notification(notification, palantir_sender.clone());
 
                 // Reprocess all layout and module contexts from the application, excluding the central context.
-                Synthesizer::new(false, matcher, palantir_sender.clone())
+                Synthesizer::new(false, Arc::clone(&matcher), palantir_sender.clone())
                     .process(get_minified_styles(), working_dir)
                     .await;
 
                 tracing::debug!("Synthesizer process completed. Sending refresh event from root.");
 
-                Self::send_event_to_main_runtime(
-                    GaladrielEvents::RefreshFromRoot,
-                    baraddur_sender.clone(),
-                );
+                FileTimestampUpdater::new(palantir_sender.clone())
+                    .process_from_folder(working_dir.to_owned(), matcher)
+                    .await;
             }
             None => {}
         }

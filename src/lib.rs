@@ -73,7 +73,7 @@
 //!
 //! For further integration details, refer to the specific methods and functions documented in the module, which provide advanced features for managing contexts, variables, animations, and other styling elements within `Galadriel CSS`.
 
-use std::{io::Stdout, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{io::Stdout, path::PathBuf, sync::Arc};
 
 use baraddur::Baraddur;
 use chrono::Local;
@@ -84,7 +84,7 @@ use configatron::{
 use error::{ErrorAction, ErrorKind, GaladrielError};
 use events::{GaladrielAlerts, GaladrielEvents};
 use ignore::overrides;
-use lothlorien::LothlorienPipeline;
+use lothlorien::Lothlorien;
 use palantir::Palantir;
 use ratatui::prelude::CrosstermBackend;
 use shellscape::{
@@ -92,10 +92,7 @@ use shellscape::{
     ui::ShellscapeInterface, Shellscape,
 };
 use synthesizer::Synthesizer;
-use tokio::{
-    net::TcpListener,
-    sync::{broadcast, RwLock},
-};
+use tokio::sync::{broadcast, RwLock};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -122,6 +119,7 @@ mod shellscape;
 mod synthesizer;
 mod trailblazer;
 mod types;
+mod updates;
 mod utils;
 
 /// Represents the runtime modes of Galadriel CSS.
@@ -254,7 +252,15 @@ impl GaladrielRuntime {
         let final_json = format!("{{\"css\": {:?}, \"trackingClasses\": {}}}", css, tracking);
 
         // Creates the final json containing the CSS and Nenyr classes tracking map at root dir + `/.galadrielcss/galadrielcss.json`.
-        write_file(folder_path, final_json_path, final_json, ErrorAction::Exit).await?;
+        write_file(
+            folder_path,
+            final_json_path,
+            final_json,
+            ErrorAction::Exit,
+            ErrorKind::FileCreationError,
+            ErrorKind::FileWriteError,
+        )
+        .await?;
 
         tracing::info!("Build process completed and final JSON file written.");
 
@@ -264,6 +270,13 @@ impl GaladrielRuntime {
     /// Configures the development environment for Galadriel CSS.
     async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
         tracing::info!("Configuring development environment.");
+
+        // Initialize the Palantir alerts system.
+        let palantir_alerts = Palantir::new();
+        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+
+        tracing::info!("Initialized Palantir alerts system.");
 
         // Load the galadriel configurations.
         load_galadriel_configs(&self.working_dir).await?;
@@ -277,13 +290,6 @@ impl GaladrielRuntime {
 
         tracing::debug!("Created exclude matcher for working directory.");
 
-        // Initialize the Palantir alerts system.
-        let palantir_alerts = Palantir::new();
-        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
-        let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
-
-        tracing::info!("Initialized Palantir alerts system.");
-
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
@@ -292,14 +298,14 @@ impl GaladrielRuntime {
 
         tracing::debug!("Initialized Shellscape UI and application state.");
 
-        // Initialize the Lothlórien pipeline (WebSocket server for Galadriel CSS).
-        let mut pipeline = LothlorienPipeline::new(get_port(), palantir_sender.clone());
-        let pipeline_listener = pipeline.create_listener().await?; // Create WebSocket listener for pipeline
-        let running_on_port = self.retrieve_port_from_local_addr(&pipeline_listener)?; // Extract port from the listener's local address
-        let _listener_handler = pipeline.create_pipeline(pipeline_listener); // Start the WebSocket pipeline
+        // Initialize the Lothlórien pipeline (actix-web server for Galadriel CSS).
+        let mut pipeline = Lothlorien::new(&get_port(), palantir_sender.clone());
+        let socket_addr = pipeline.create_socket_addr().await?;
+        let socket_port = socket_addr.port();
+        let server_handler = pipeline.stream_sync(socket_addr);
 
-        tracing::debug!(port = %running_on_port, "Initialized Lothlórien pipeline and WebSocket listener.");
-        tracing::info!("Started WebSocket pipeline for Lothlórien.");
+        tracing::debug!(port = %socket_port, "Initialized Lothlórien server.");
+        tracing::info!("Started server pipeline for Lothlórien.");
 
         // Initialize the Barad-dûr file system observer.
         let mut baraddur_observer = Baraddur::new(250, working_dir, palantir_sender.clone());
@@ -310,13 +316,13 @@ impl GaladrielRuntime {
 
         tracing::info!("Started Barad-dûr file system observer.");
 
-        shellscape_app.reset_server_running_on_port(running_on_port); // Set the running port.
-        pipeline.register_server_port_in_temp(running_on_port)?; // Register the pipeline's server port in temporary storage.
+        shellscape_app.reset_server_running_on_port(socket_port); // Set the running port.
+        pipeline.register_server_port_in_temp(socket_port).await?; // Register the pipeline's server port in temporary storage.
         interface.invoke()?; // Start the Shellscape terminal interface rendering.
 
         tracing::debug!(
             "Registered pipeline server port in temporary storage: {}",
-            running_on_port
+            socket_port
         );
         tracing::debug!("Started Shellscape terminal interface...");
 
@@ -348,12 +354,13 @@ impl GaladrielRuntime {
             .await;
 
         // Clean up: Remove the temporary server port and abort the interface.
-        pipeline.remove_server_port_in_temp()?;
+        pipeline.remove_server_port_in_temp().await?;
+        server_handler.abort_handle().abort();
         interface.abort()?;
 
         tracing::debug!(
             "Removed server port from temporary storage: {}",
-            running_on_port
+            socket_port
         );
 
         tracing::debug!("Aborted Shellscape interface...");
@@ -366,7 +373,7 @@ impl GaladrielRuntime {
     async fn development_runtime(
         &mut self,
         working_dir: &PathBuf,
-        pipeline: &mut LothlorienPipeline,
+        pipeline: &mut Lothlorien,
         shellscape: &mut Shellscape,
         shellscape_app: &mut ShellscapeApp,
         baraddur_observer: &mut Baraddur,
@@ -375,9 +382,6 @@ impl GaladrielRuntime {
         interface: &mut ShellscapeInterface<CrosstermBackend<Stdout>>,
     ) -> GaladrielResult<()> {
         tracing::info!("Galadriel CSS development runtime initiated.");
-
-        // Get runtime sender for Lothlórien pipeline
-        let pipeline_sender = pipeline.get_runtime_sender();
 
         loop {
             // Render the Shellscape terminal interface, handle potential errors.
@@ -403,7 +407,6 @@ impl GaladrielRuntime {
 
                             return Err(err);
                         }
-                        _ => {}
                     }
                 }
                 // Handle events from the Baraddur observer (file system).
@@ -421,11 +424,6 @@ impl GaladrielRuntime {
 
                             return Err(err);
                         }
-                        Ok(event) => {
-                            if let Err(err) = pipeline_sender.send(event) {
-                                tracing::error!("Something went wrong while sending event from observer to the server: Error: {:?}", err);
-                            }
-                        }
                     }
                 }
                 // Handle events from the Shellscape terminal interface.
@@ -441,7 +439,6 @@ impl GaladrielRuntime {
                                 shellscape_app,
                                 Arc::clone(&matcher),
                                 palantir_sender.clone(),
-                                pipeline_sender.clone(),
                             ).await {
                                 break;
                             }
@@ -469,7 +466,6 @@ impl GaladrielRuntime {
     /// - `shellscape_app`: A mutable reference to the ShellscapeApp instance.
     /// - `matcher`: A shared, thread-safe reference to the Override matcher configuration.
     /// - `palantir_sender`: Broadcast sender for sending Galadriel alerts.
-    /// - `pipeline_sender`: Broadcast sender for sending Galadriel events.
     ///
     /// # Returns
     /// - `ShellscapeCommands`: The command to be executed as a result of processing the event.
@@ -481,7 +477,6 @@ impl GaladrielRuntime {
         shellscape_app: &mut ShellscapeApp,
         matcher: Arc<RwLock<overrides::Override>>,
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
-        pipeline_sender: broadcast::Sender<GaladrielEvents>,
     ) -> ShellscapeCommands {
         // Match the event to its corresponding Shellscape command.
         match shellscape.match_shellscape_event(event) {
@@ -495,7 +490,6 @@ impl GaladrielRuntime {
                     working_dir,
                     matcher,
                     palantir_sender,
-                    pipeline_sender,
                 )
                 .await;
             }
@@ -643,7 +637,6 @@ impl GaladrielRuntime {
         working_dir: &PathBuf,
         matcher: Arc<RwLock<overrides::Override>>,
         palantir_sender: broadcast::Sender<GaladrielAlerts>,
-        pipeline_sender: broadcast::Sender<GaladrielEvents>,
     ) {
         tracing::info!("Starting restoration of abstract syntax trees to default state.");
 
@@ -658,61 +651,6 @@ impl GaladrielRuntime {
         Synthesizer::new(true, matcher, palantir_sender.clone())
             .process(get_minified_styles(), working_dir)
             .await;
-
-        // Step 3: Notify the server to refresh the application.
-        self.send_event_to_server(GaladrielEvents::RefreshCSS, pipeline_sender.clone());
-        self.send_event_to_server(GaladrielEvents::RefreshFromRoot, pipeline_sender.clone());
-    }
-
-    /// Sends a specific event to the server.
-    ///
-    /// # Arguments
-    /// * `event` - The event to be sent to the server.
-    /// * `pipeline_sender` - The broadcast channel to send the event through.
-    fn send_event_to_server(
-        &self,
-        event: GaladrielEvents,
-        pipeline_sender: broadcast::Sender<GaladrielEvents>,
-    ) {
-        if let Err(err) = pipeline_sender.send(event) {
-            tracing::error!(
-                "Something went wrong while sending event to server. Error: {:?}",
-                err
-            );
-        }
-    }
-
-    /// Extracts the local address from a TCP listener, handling any errors encountered.
-    ///
-    /// # Arguments
-    /// * `listener` - The TCP listener instance to retrieve the address from.
-    ///
-    /// # Returns
-    /// * A `GaladrielResult` containing the extracted `SocketAddr` or an error if extraction failed.
-    fn extract_local_addr_from_listener(
-        &self,
-        listener: &TcpListener,
-    ) -> GaladrielResult<SocketAddr> {
-        listener.local_addr().map_err(|err| {
-            GaladrielError::raise_critical_runtime_error(
-                ErrorKind::ServerLocalAddrFetchFailed,
-                &err.to_string(),
-                ErrorAction::Exit,
-            )
-        })
-    }
-
-    /// Retrieves the port number from the local address of a TCP listener.
-    ///
-    /// # Arguments
-    /// * `listener` - The TCP listener instance to retrieve the port number from.
-    ///
-    /// # Returns
-    /// * A `GaladrielResult` containing the extracted port number or an error if extraction failed.
-    fn retrieve_port_from_local_addr(&self, listener: &TcpListener) -> GaladrielResult<u16> {
-        let local_addr = self.extract_local_addr_from_listener(listener)?;
-
-        Ok(local_addr.port())
     }
 
     /// Replaces the configuration file with updated settings.

@@ -30,6 +30,8 @@ pub async fn write_file(
     file_path: PathBuf,
     write_context: String,
     error_action: ErrorAction,
+    error_file_creation_kind: ErrorKind,
+    error_file_write_kind: ErrorKind,
 ) -> GaladrielResult<()> {
     tracing::info!("Starting the write operation for file: {:?}", file_path);
 
@@ -47,7 +49,7 @@ pub async fn write_file(
     // Attempt to create the file at the specified path.
     let mut file = fs::File::create(file_path).await.map_err(|err| {
         GaladrielError::raise_critical_other_error(
-            ErrorKind::FileCreationError,
+            error_file_creation_kind,
             &err.to_string(),
             error_action.to_owned(),
         )
@@ -63,7 +65,7 @@ pub async fn write_file(
         .await
         .map_err(|err| {
             GaladrielError::raise_critical_other_error(
-                ErrorKind::FileWriteError,
+                error_file_write_kind,
                 &err.to_string(),
                 error_action.to_owned(),
             )
