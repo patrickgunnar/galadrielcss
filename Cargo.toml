@@ -23,7 +23,7 @@ notify-debouncer-full = "0.4.0"
 textwrap = "0.16.1"
 syntect = "5.2.0"
 regex = "1.11.1"
-actix-web = "4.9.0"
+axum = "0.7.9"
 filetime = "0.2.25"
 
 tokio = { version = "1.41.0", features = ["full"] }

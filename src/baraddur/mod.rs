@@ -633,15 +633,6 @@ impl Baraddur {
                         }
                     }
                 }
-
-                // Updates the CSS cache by transforming the most up-to-date styles.
-                Astroform::new(
-                    get_minified_styles(),
-                    get_reset_styles(),
-                    palantir_sender.clone(),
-                )
-                .transform()
-                .await;
             }
             // Handle errors that occur during event reception.
             Err(err) => {
@@ -925,47 +916,24 @@ impl Baraddur {
         match context_type {
             // If the context type is Layout or Module, trigger the corresponding layout/module events.
             Some(CrealionContextType::Layout) | Some(CrealionContextType::Module) => {
+                // Updates the CSS cache by transforming the most up-to-date styles.
+                Astroform::new(
+                    get_minified_styles(),
+                    get_reset_styles(),
+                    palantir_sender.clone(),
+                )
+                .transform()
+                .await;
+
                 // Applies inheritance for Nenyr classes and their corresponding utility class names.
                 Trailblazer::default().blazer();
 
-                // If the context is Layout, check the parent path and send a refresh event.
-                if let Some(CrealionContextType::Layout) = context_type {
-                    match current_path.parent() {
-                        // If there is a parent path, send a refresh event to the parent layout.
-                        Some(parent_path) => {
-                            let str_path = parent_path.to_string_lossy().to_string();
-
-                            tracing::debug!(
-                                "Sending refresh event to parent layout: {:?}",
-                                str_path
-                            );
-
-                            FileTimestampUpdater::new(palantir_sender.clone())
-                                .process_from_folder(parent_path.to_owned(), matcher)
-                                .await;
-                        }
-                        // If there's no parent path, trigger a refresh event starting from the root.
-                        None => {
-                            tracing::debug!(
-                                "No parent layout path, sending refresh event from root."
-                            );
-
-                            FileTimestampUpdater::new(palantir_sender.clone())
-                                .process_from_folder(working_dir.to_owned(), matcher)
-                                .await;
-                        }
-                    }
-                } else {
-                    // If the context is Module, remove the ".nyr" suffix and send a refresh event for the component.
-                    let formatted_path = current_path
-                        .to_string_lossy()
-                        .to_string()
-                        .replace(".nyr", "");
-
-                    tracing::debug!("Sending refresh event for component: {:?}", formatted_path);
+                if let Some(parent_path) = current_path.parent() {
+                    tracing::debug!("Sending refresh event for folder: {:?}", parent_path);
 
                     FileTimestampUpdater::new(palantir_sender.clone())
-                        .process_from_file(PathBuf::from(formatted_path.to_owned()));
+                        .process_from_folder(parent_path.to_owned(), matcher)
+                        .await;
                 }
             }
             // If the context type is Central.

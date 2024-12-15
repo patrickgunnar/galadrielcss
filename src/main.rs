@@ -16,7 +16,7 @@ fn get_usage_message() -> String {
 ///
 /// * `GaladrielRuntimeResult<()>` - Returns a result type wrapping a unit (`()`), which will
 ///   indicate either success (`Ok`) or failure (`Err`) of the runtime initialization.
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> GaladrielResult<()> {
     // Retrieve the command-line arguments passed to the program.
     let mut args = env::args();

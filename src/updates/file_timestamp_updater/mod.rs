@@ -1,13 +1,23 @@
+use core::str;
 use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
 use chrono::Local;
 use ignore::{overrides, WalkBuilder};
+use lazy_static::lazy_static;
+use regex::Regex;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::GaladrielAlerts,
+    utils::send_palantir_error_notification::send_palantir_error_notification,
 };
+
+const PATTERN: &str = r"@(?:class|layout|module):([a-zA-Z0-9_-]+)(?:::([a-zA-Z0-9_-]+))?";
+
+lazy_static! {
+    pub static ref MARKUP_RE: Regex = Regex::new(PATTERN).unwrap();
+}
 
 #[derive(Clone, Debug)]
 pub struct FileTimestampUpdater {
@@ -51,24 +61,38 @@ impl FileTimestampUpdater {
     }
 
     fn is_component(&self, current_path: &PathBuf, matcher: &overrides::Override) -> bool {
-        !matcher.matched(current_path, false).is_ignore()
+        current_path.is_file()
+            && !matcher.matched(current_path, false).is_ignore()
             && current_path
                 .extension()
                 .map(|ext| {
-                    ext == "js" || ext == "jsx" || ext == "ts" || ext == "tsx" || ext == "html"
+                    ext == "js"
+                        || ext == "jsx"
+                        || ext == "ts"
+                        || ext == "tsx"
+                        || ext == "html"
+                        || ext == "css"
                 })
                 .unwrap_or(false)
+            && self.has_component_markup(current_path)
     }
 
-    pub fn process_from_file(&self, path: PathBuf) {
-        for ext in ["js", "jsx", "ts", "tsx", "html"] {
-            let mut complete_path = path.to_path_buf();
+    fn has_component_markup(&self, current_path: &PathBuf) -> bool {
+        match std::fs::read_to_string(current_path) {
+            Ok(file_content) => {
+                return MARKUP_RE.is_match(&file_content)
+                    || file_content.contains("@galadrielcss styles;");
+            }
+            Err(err) => {
+                let error = GaladrielError::raise_general_other_error(
+                    ErrorKind::Other,
+                    &format!(". Error: {}", err.to_string()),
+                    ErrorAction::Notify,
+                );
 
-            complete_path.set_extension(ext);
+                send_palantir_error_notification(error, Local::now(), self.palantir_sender.clone());
 
-            if complete_path.exists() {
-                self.set_file_times(&complete_path);
-                break;
+                return false;
             }
         }
     }

@@ -1,10 +1,12 @@
-use actix_web::{rt, web, App, HttpResponse, HttpServer, Responder};
+use axum::{extract::Path, routing, Router};
 use chrono::Local;
 use rand::Rng;
-use std::{env, net::SocketAddr, path::PathBuf};
+use serde::Deserialize;
+use std::{env, path::PathBuf};
 
 use tokio::{
     fs,
+    net::TcpListener,
     sync::{broadcast, mpsc},
     task::JoinHandle,
 };
@@ -31,6 +33,13 @@ pub enum ContextType {
     Layout,
     /// Module context, generally referring to isolated or component-level styles.
     Module,
+}
+
+#[derive(Deserialize)]
+struct CollectUtilityParams {
+    context_type: String,
+    context_name: String,
+    class_name: String,
 }
 
 #[derive(Debug)]
@@ -101,7 +110,7 @@ impl Lothlorien {
         Ok(())
     }
 
-    pub async fn create_socket_addr(&self) -> GaladrielResult<SocketAddr> {
+    pub async fn create_socket_addr(&self) -> GaladrielResult<TcpListener> {
         tokio::net::TcpListener::bind(self.socket_addr.clone())
             .await
             .map_err(|err| {
@@ -110,53 +119,36 @@ impl Lothlorien {
                     &err.to_string(),
                     ErrorAction::Exit,
                 )
-            })?
-            .local_addr()
-            .map_err(|err| {
-                GaladrielError::raise_critical_runtime_error(
-                    ErrorKind::ServerLocalAddrFetchFailed,
-                    &err.to_string(),
-                    ErrorAction::Exit,
-                )
             })
     }
 
-    pub fn stream_sync(&self, socket_addr: SocketAddr) -> JoinHandle<()> {
+    pub fn stream_sync(&self, socket_addr: TcpListener) -> JoinHandle<()> {
         let lothlorien_sender = self.lothlorien_sender.clone();
         let palantir_sender = self.palantir_sender.clone();
 
-        rt::spawn(async move {
+        tokio::spawn(async move {
             let lothlorien_sender = lothlorien_sender.clone();
             let palantir_sender = palantir_sender.clone();
 
-            let http_server = HttpServer::new(|| {
-                App::new()
-                    .route("/fetch-css", web::get().to(Self::fetch_css))
-                    .route(
-                        "/collect-utility-class-names/{context_type}:{context_name}::{class_name}",
-                        web::get().to(Self::collect_utility_names),
-                    )
-            });
+            let app = Router::new()
+                .route("/fetch-css", routing::get(Self::fetch_css))
+                .route(
+                    "/collect-utility-class-names/:context_type/:context_name/:class_name",
+                    routing::get(Self::collect_utility_names),
+                );
 
-            match http_server.bind(socket_addr) {
-                Ok(server) => {
-                    send_palantir_success_notification(
-                        &Self::random_server_subheading_message(),
-                        Local::now(),
-                        palantir_sender.clone(),
-                    );
+            let app_server = axum::serve(socket_addr, app).with_graceful_shutdown(
+                Self::shutdown_signal(palantir_sender.clone(), lothlorien_sender.clone()),
+            );
 
-                    match server.run().await {
-                        Ok(()) => {}
-                        Err(err) => {
-                            Self::send_galadriel_error(
-                                err,
-                                ErrorKind::Other,
-                                lothlorien_sender.clone(),
-                            );
-                        }
-                    }
-                }
+            send_palantir_success_notification(
+                &Self::random_server_subheading_message(),
+                Local::now(),
+                palantir_sender.clone(),
+            );
+
+            match app_server.await {
+                Ok(()) => {}
                 Err(err) => {
                     Self::send_galadriel_error(
                         err,
@@ -168,23 +160,37 @@ impl Lothlorien {
         })
     }
 
-    async fn fetch_css() -> impl Responder {
-        HttpResponse::Ok().body(get_updated_css())
+    async fn fetch_css() -> String {
+        get_updated_css()
     }
 
-    async fn collect_utility_names(path: web::Path<(String, String, String)>) -> impl Responder {
-        let (context_type, context_name, class_name) = path.into_inner();
+    async fn collect_utility_names(Path(params): Path<CollectUtilityParams>) -> String {
+        let CollectUtilityParams {
+            context_type,
+            context_name,
+            class_name,
+        } = params;
 
         let (context_type, context_name, class_name) = match context_type.as_str() {
             "@class" => (ContextType::Central, None, context_name),
             "@layout" => (ContextType::Layout, Some(context_name), class_name),
             "@module" => (ContextType::Module, Some(context_name), class_name),
-            _ => return HttpResponse::Ok().body("".to_string()),
+            _ => return "".to_string(),
         };
 
-        let utility_class_names = get_utility_class_names(context_type, context_name, class_name);
+        get_utility_class_names(context_type, context_name, class_name)
+    }
 
-        HttpResponse::Ok().body(utility_class_names)
+    async fn shutdown_signal(
+        palantir_sender: broadcast::Sender<GaladrielAlerts>,
+        lothlorien_sender: mpsc::UnboundedSender<GaladrielEvents>,
+    ) {
+        let mut palantir_receiver = palantir_sender.subscribe();
+
+        tokio::select! {
+            _ = lothlorien_sender.closed() => {}
+            Err(broadcast::error::RecvError::Closed) = palantir_receiver.recv() => {}
+        }
     }
 
     fn send_galadriel_error(

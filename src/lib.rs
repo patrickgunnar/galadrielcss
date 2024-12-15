@@ -73,7 +73,7 @@
 //!
 //! For further integration details, refer to the specific methods and functions documented in the module, which provide advanced features for managing contexts, variables, animations, and other styling elements within `Galadriel CSS`.
 
-use std::{io::Stdout, path::PathBuf, sync::Arc};
+use std::{io::Stdout, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use baraddur::Baraddur;
 use chrono::Local;
@@ -92,7 +92,10 @@ use shellscape::{
     ui::ShellscapeInterface, Shellscape,
 };
 use synthesizer::Synthesizer;
-use tokio::sync::{broadcast, RwLock};
+use tokio::{
+    net::TcpListener,
+    sync::{broadcast, RwLock},
+};
 use tracing::Level;
 use tracing_appender::rolling;
 use tracing_subscriber::FmtSubscriber;
@@ -271,13 +274,6 @@ impl GaladrielRuntime {
     async fn configure_development_environment(&mut self) -> GaladrielResult<()> {
         tracing::info!("Configuring development environment.");
 
-        // Initialize the Palantir alerts system.
-        let palantir_alerts = Palantir::new();
-        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
-        let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
-
-        tracing::info!("Initialized Palantir alerts system.");
-
         // Load the galadriel configurations.
         load_galadriel_configs(&self.working_dir).await?;
 
@@ -290,6 +286,13 @@ impl GaladrielRuntime {
 
         tracing::debug!("Created exclude matcher for working directory.");
 
+        // Initialize the Palantir alerts system.
+        let palantir_alerts = Palantir::new();
+        let palantir_sender = palantir_alerts.get_palantir_sender(); // Retrieve the Palantir sender from the palantir_alerts instance. This sender is used to send alerts to Palantir.
+        let _start_alert_watcher = palantir_alerts.start_alert_watcher(false); // Start the alert watcher using the palantir_alerts instance. This likely begins observing for new alerts or events.
+
+        tracing::info!("Initialized Palantir alerts system.");
+
         // Initialize the Shellscape terminal UI.
         let mut shellscape = Shellscape::new();
         let mut _shellscape_events = shellscape.create_events(250); // Event handler for Shellscape events
@@ -300,9 +303,10 @@ impl GaladrielRuntime {
 
         // Initialize the Lothlórien pipeline (actix-web server for Galadriel CSS).
         let mut pipeline = Lothlorien::new(&get_port(), palantir_sender.clone());
-        let socket_addr = pipeline.create_socket_addr().await?;
+        let listener = pipeline.create_socket_addr().await?;
+        let socket_addr = self.get_local_addr_from_listener(&listener)?;
         let socket_port = socket_addr.port();
-        let server_handler = pipeline.stream_sync(socket_addr);
+        let _server_handler = pipeline.stream_sync(listener);
 
         tracing::debug!(port = %socket_port, "Initialized Lothlórien server.");
         tracing::info!("Started server pipeline for Lothlórien.");
@@ -355,7 +359,6 @@ impl GaladrielRuntime {
 
         // Clean up: Remove the temporary server port and abort the interface.
         pipeline.remove_server_port_in_temp().await?;
-        server_handler.abort_handle().abort();
         interface.abort()?;
 
         tracing::debug!(
@@ -672,6 +675,16 @@ impl GaladrielRuntime {
             ErrorAction::Notify,
         )
         .await
+    }
+
+    fn get_local_addr_from_listener(&self, listener: &TcpListener) -> GaladrielResult<SocketAddr> {
+        listener.local_addr().map_err(|err| {
+            GaladrielError::raise_critical_runtime_error(
+                ErrorKind::ServerLocalAddrFetchFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })
     }
 
     /// Generates a log filename based on the current timestamp.
