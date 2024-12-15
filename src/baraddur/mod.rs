@@ -916,6 +916,9 @@ impl Baraddur {
         match context_type {
             // If the context type is Layout or Module, trigger the corresponding layout/module events.
             Some(CrealionContextType::Layout) | Some(CrealionContextType::Module) => {
+                // Applies inheritance for Nenyr classes and their corresponding utility class names.
+                Trailblazer::default().blazer();
+
                 // Updates the CSS cache by transforming the most up-to-date styles.
                 Astroform::new(
                     get_minified_styles(),
@@ -924,9 +927,6 @@ impl Baraddur {
                 )
                 .transform()
                 .await;
-
-                // Applies inheritance for Nenyr classes and their corresponding utility class names.
-                Trailblazer::default().blazer();
 
                 if let Some(parent_path) = current_path.parent() {
                     tracing::debug!("Sending refresh event for folder: {:?}", parent_path);

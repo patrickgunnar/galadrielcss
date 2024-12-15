@@ -173,13 +173,11 @@ impl Synthesizer {
         // Applies inheritance for Nenyr classes and their corresponding utility class names.
         Trailblazer::default().blazer();
 
-        if self.include_central {
-            tracing::info!("Transforming styles in CSS utility rules.");
+        tracing::info!("Transforming styles in CSS utility rules.");
 
-            // Updates the CSS cache by transforming the most up-to-date styles.
-            Astroform::new(is_minified, get_reset_styles(), palantir_sender.clone())
-                .transform()
-                .await;
-        }
+        // Updates the CSS cache by transforming the most up-to-date styles.
+        Astroform::new(is_minified, get_reset_styles(), palantir_sender.clone())
+            .transform()
+            .await;
     }
 }
