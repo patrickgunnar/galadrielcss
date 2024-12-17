@@ -76,8 +76,10 @@ pub async fn formera(
             );
             tracing::error!("Error details: {:?}", error);
 
-            let notification =
-                GaladrielAlerts::create_nenyr_error(start_time.to_owned(), error.to_owned());
+            let mut error = error.to_owned();
+            error.error_message = error.get_error_message().replace("nickname;", "");
+
+            let notification = GaladrielAlerts::create_nenyr_error(start_time.to_owned(), error);
 
             send_palantir_notification(notification, palantir_sender.clone());
         }
