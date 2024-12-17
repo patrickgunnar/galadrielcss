@@ -932,7 +932,7 @@ impl Baraddur {
                     tracing::debug!("Sending refresh event for folder: {:?}", parent_path);
 
                     FileTimestampUpdater::new(palantir_sender.clone())
-                        .process_from_folder(parent_path.to_owned(), matcher)
+                        .process_from_folder(false, parent_path.to_owned(), Arc::clone(&matcher))
                         .await;
                 }
             }
@@ -957,11 +957,15 @@ impl Baraddur {
                 tracing::debug!("Synthesizer process completed. Sending refresh event from root.");
 
                 FileTimestampUpdater::new(palantir_sender.clone())
-                    .process_from_folder(working_dir.to_owned(), matcher)
+                    .process_from_folder(false, working_dir.to_owned(), Arc::clone(&matcher))
                     .await;
             }
             None => {}
         }
+
+        FileTimestampUpdater::new(palantir_sender.clone())
+            .process_from_folder(true, working_dir.to_owned(), matcher)
+            .await;
     }
 
     /// Sends an event to the main runtime through the Baraddur sender.

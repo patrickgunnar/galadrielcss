@@ -39,6 +39,7 @@ impl FileTimestampUpdater {
     // Asynchronous method to process files in a folder and update their timestamps.
     pub async fn process_from_folder(
         &self,
+        is_css_processing: bool,
         path: PathBuf, // Path to the folder to be processed.
         matcher: Arc<RwLock<overrides::Override>>, // Clone the sender for thread safety.
     ) {
@@ -68,9 +69,11 @@ impl FileTimestampUpdater {
             tracing::debug!("Checking file: {}", current_path.display());
 
             // Check if the file matches the component criteria.
-            if self.is_component(&current_path, &matcher) {
+            if self.is_component(is_css_processing, &current_path, &matcher)
+                || self.is_css_processing(is_css_processing, &current_path, &matcher)
+            {
                 tracing::info!(
-                    "File {} is a component. Attempting to update timestamp.",
+                    "File {} is a component or CSS file. Attempting to update timestamp.",
                     current_path.display()
                 );
 
@@ -98,42 +101,70 @@ impl FileTimestampUpdater {
         tracing::info!("Finished processing files from folder: {}", path.display());
     }
 
+    fn is_css_processing(
+        &self,
+        is_css_processing: bool,
+        current_path: &PathBuf,
+        matcher: &overrides::Override,
+    ) -> bool {
+        tracing::debug!("Checking if file {} is a CSS file.", current_path.display());
+
+        is_css_processing
+            && current_path
+                .extension()
+                .map(|ext| ext == "css")
+                .unwrap_or(false)
+            && self.is_valid(true, current_path, matcher)
+    }
+
     // Helper function to determine if a file is a component based on path and content.
-    fn is_component(&self, current_path: &PathBuf, matcher: &overrides::Override) -> bool {
+    fn is_component(
+        &self,
+        is_css_processing: bool,
+        current_path: &PathBuf,
+        matcher: &overrides::Override,
+    ) -> bool {
         tracing::debug!(
             "Checking if file {} is a component.",
             current_path.display()
         );
 
-        current_path.is_file() // Ensure the path points to a file.
-            && !matcher.matched(current_path, false).is_ignore() // Check if the file is not ignored.
+        !is_css_processing
             && current_path
                 .extension()
                 .map(|ext| {
                     // Check if the file has a supported extension.
-                    ext == "js"
-                        || ext == "jsx"
-                        || ext == "ts"
-                        || ext == "tsx"
-                        || ext == "html"
-                        || ext == "css"
+                    ext == "js" || ext == "jsx" || ext == "ts" || ext == "tsx" || ext == "html"
                 })
                 .unwrap_or(false)
-            && self.has_component_markup(current_path) // Verify the file contains component markup.
+            && self.is_valid(false, current_path, matcher)
+    }
+
+    fn is_valid(
+        &self,
+        is_css_processing: bool,
+        current_path: &PathBuf,
+        matcher: &overrides::Override,
+    ) -> bool {
+        !matcher.matched(current_path, false).is_ignore()
+            && self.has_component_markup(is_css_processing, current_path)
+        // Verify the file contains component markup.
     }
 
     // Helper function to check if a file contains specific markup.
-    fn has_component_markup(&self, current_path: &PathBuf) -> bool {
+    fn has_component_markup(&self, is_css_processing: bool, current_path: &PathBuf) -> bool {
         tracing::debug!(
             "Checking if file {} contains component markup.",
             current_path.display()
         );
 
+        // Check for regex matches or specific Galadriel CSS markers in the CSS file content.
         match std::fs::read_to_string(current_path) {
+            Ok(file_content) if is_css_processing => {
+                return file_content.contains("@galadrielcss styles;");
+            }
             Ok(file_content) => {
-                // Check for regex matches or specific Galadriel CSS markers in the CSS file content.
-                return MARKUP_RE.is_match(&file_content)
-                    || file_content.contains("@galadrielcss styles;");
+                return MARKUP_RE.is_match(&file_content);
             }
             Err(err) => {
                 let error = GaladrielError::raise_general_other_error(
