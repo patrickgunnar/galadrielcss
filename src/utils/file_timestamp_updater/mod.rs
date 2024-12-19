@@ -134,7 +134,13 @@ impl FileTimestampUpdater {
                 .extension()
                 .map(|ext| {
                     // Check if the file has a supported extension.
-                    ext == "js" || ext == "jsx" || ext == "ts" || ext == "tsx" || ext == "html"
+                    ext == "js"
+                        || ext == "jsx"
+                        || ext == "ts"
+                        || ext == "tsx"
+                        || ext == "html"
+                        || ext == "md"
+                        || ext == "mdx"
                 })
                 .unwrap_or(false)
             && self.is_valid(false, current_path, matcher)
