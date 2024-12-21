@@ -102,7 +102,7 @@ impl Astroform {
             "woff" => Some("woff".to_string()),
             "woff2" => Some("woff2".to_string()),
             "ttf" => Some("truetype".to_string()),
-            "otf" => Some("otf".to_string()),
+            "otf" => Some("opentype".to_string()),
             "eot" => Some("embedded-opentype".to_string()),
             "svg" => Some("svg".to_string()),
             _ => None,
