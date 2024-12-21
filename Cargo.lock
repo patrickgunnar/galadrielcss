@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "galadrielcss"
-version = "1.0.0"
+version = "1.0.0-beta.0"
 dependencies = [
  "axum",
  "backtrace",
