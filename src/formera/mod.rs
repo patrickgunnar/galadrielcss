@@ -57,7 +57,7 @@ pub async fn formera(
 
     match parsing_result {
         // Notify Palantir on successful parsing.
-        Ok((context_type, layout_relation)) => {
+        Ok(data) => {
             tracing::info!("Successfully parsed Nenyr file: {:?}", stringified_path);
 
             send_palantir_success_notification(
@@ -66,7 +66,7 @@ pub async fn formera(
                 palantir_sender.clone(),
             );
 
-            return (Some(context_type), layout_relation);
+            return data;
         }
         // Handle Nenyr-specific errors.
         Err(GaladrielError::NenyrError { start_time, error }) => {
@@ -118,11 +118,16 @@ async fn run_parsing(
     stringified_path: &str,
     nenyr_parser: &mut NenyrParser,
     palantir_sender: broadcast::Sender<GaladrielAlerts>,
-) -> GaladrielResult<(CrealionContextType, Option<Vec<String>>)> {
+) -> GaladrielResult<(Option<CrealionContextType>, Option<Vec<String>>)> {
     tracing::info!("Reading raw content of Nenyr file: {:?}", stringified_path);
 
     // Read the raw content of the Nenyr file.
     let raw_content = resilient_reader(&path).await?;
+
+    if raw_content.is_empty() {
+        return Ok((None, None));
+    }
+
     let start_time = Local::now();
 
     tracing::info!(
@@ -150,5 +155,7 @@ async fn run_parsing(
     );
 
     // Create the required styles.
-    crealion.create().await
+    let (context_type, layout_relation) = crealion.create().await?;
+
+    Ok((Some(context_type), layout_relation))
 }

@@ -1,12 +1,13 @@
 use chrono::Local;
 use indexmap::IndexMap;
-use tokio::task::JoinHandle;
+use tokio::{sync::broadcast, task::JoinHandle};
 
 use crate::{
     asts::STYLITRON,
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::GaladrielAlerts,
     types::Stylitron,
+    utils::generates_node_styles::generates_node_styles,
 };
 
 use super::Crealion;
@@ -44,36 +45,31 @@ impl Crealion {
                     tracing::debug!(
                         "Successfully accessed the `breakpoints` section in STYLITRON AST."
                     );
+
                     data
                 }
                 None => {
-                    tracing::error!("Failed to access the `breakpoints` section in STYLITRON AST.");
-
-                    // If the "breakpoints" section is not accessible, create a critical error.
-                    let error = GaladrielError::raise_critical_other_error(
-                        ErrorKind::AccessDeniedToStylitronAST,
-                        "Failed to access the breakpoints section in STYLITRON AST",
-                        ErrorAction::Restart,
-                    );
-
-                    tracing::error!("Critical error encountered: {:?}", error);
-
-                    // Generate an error notification and attempt to send it via the sender.
-                    let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
-
-                    if let Err(err) = sender.send(notification) {
-                        tracing::error!("Failed to send notification: {}", err);
-                    }
+                    // Handle error if the "breakpoints" section is not found in the STYLITRON AST.
+                    Self::handle_access_error("breakpoints", sender);
 
                     return;
                 }
             };
 
             // Process the provided mobile-first and desktop-first breakpoint data.
-            let mobile_first_data =
+            let mobile_definitions =
                 Self::process_breakpoint(mobile_data, BreakpointType::MobileFirst);
-            let desktop_first_data =
+            let desktop_definitions =
                 Self::process_breakpoint(desktop_data, BreakpointType::DesktopFirst);
+
+            // Apply the processed breakpoint definitions to the responsive node in STYLITRON.
+            if let Err(_) = Self::apply_definitions_to_responsive_node(
+                mobile_definitions.to_owned(),
+                desktop_definitions.to_owned(),
+                sender.clone(),
+            ) {
+                return;
+            }
 
             // Match the `stylitron_data` to ensure it's of the expected type.
             match *stylitron_data {
@@ -85,8 +81,8 @@ impl Crealion {
 
                     // Transform the provided breakpoints data into the expected format for STYLITRON.
                     let breakpoints = IndexMap::from([
-                        ("mobile-first".to_string(), mobile_first_data),
-                        ("desktop-first".to_string(), desktop_first_data),
+                        ("mobile-first".to_string(), mobile_definitions),
+                        ("desktop-first".to_string(), desktop_definitions),
                     ]);
 
                     // Overwrite the existing breakpoints definitions with the new data.
@@ -130,6 +126,107 @@ impl Crealion {
                 (identifier, format!("{}:{}", schema_type, value))
             })
             .collect()
+    }
+
+    /// Applies the provided mobile and desktop breakpoints definitions to the responsive node in the STYLITRON AST.
+    ///
+    /// This function accesses the `responsive` section in the STYLITRON Abstract Syntax Tree (AST),
+    /// and processes the given `mobile_definitions` and `desktop_definitions` to integrate them
+    /// into the existing responsive styles.
+    ///
+    /// # Arguments
+    /// - `mobile_definitions` (`IndexMap<String, String>`): A collection of mobile-first breakpoint definitions.
+    /// - `desktop_definitions` (`IndexMap<String, String>`): A collection of desktop-first breakpoints definitions.
+    /// - `sender` (`broadcast::Sender<GaladrielAlerts>`): The sender used to send alerts, such as error notifications.
+    ///
+    /// # Returns
+    /// - `Ok(())`: If the definitions are successfully applied.
+    /// - `Err(())`: If there was an error accessing the `responsive` section in the STYLITRON AST.
+    fn apply_definitions_to_responsive_node(
+        mobile_definitions: IndexMap<String, String>,
+        desktop_definitions: IndexMap<String, String>,
+        sender: broadcast::Sender<GaladrielAlerts>,
+    ) -> Result<(), ()> {
+        // Attempt to access the "responsive" section in the STYLITRON AST.
+        let mut stylitron_data = match STYLITRON.get_mut("responsive") {
+            Some(data) => {
+                tracing::debug!("Successfully accessed the `responsive` section in STYLITRON AST.");
+
+                data
+            }
+            None => {
+                // Handle error if the "responsive" section is not found in the STYLITRON AST.
+                Self::handle_access_error("responsive", sender);
+
+                return Err(());
+            }
+        };
+
+        // Match on the data to ensure it is of the correct type.
+        match *stylitron_data {
+            // If the data is of type `Stylitron::ResponsiveStyles`, process the definitions.
+            Stylitron::ResponsiveStyles(ref mut responsive_definitions) => {
+                // Process mobile and desktop first definitions.
+                Self::process_definitions_creation(mobile_definitions, responsive_definitions);
+                Self::process_definitions_creation(desktop_definitions, responsive_definitions);
+
+                return Ok(());
+            }
+            _ => return Err(()),
+        }
+    }
+
+    /// Processes the creation of breakpoints and adds them to the `responsive_definitions` (STYLITRON responsive node).
+    ///
+    /// This function iterates over the provided `definitions` (breakpoints: "<schema type>:<breakpoint value>") and
+    /// ensures each definition is inserted into the `responsive_definitions` (responsive node) under the appropriate entry.
+    ///
+    /// # Arguments
+    /// - `definitions` (`IndexMap<String, String>`): A collection of breakpoints to be processed.
+    /// - `responsive_definitions` (`&mut IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, String>>>>`):
+    ///   A mutable reference to the map where the processed definitions will be inserted (responsive node).
+    fn process_definitions_creation(
+        definitions: IndexMap<String, String>,
+        responsive_definitions: &mut IndexMap<
+            String,
+            IndexMap<String, IndexMap<String, IndexMap<String, IndexMap<String, String>>>>,
+        >,
+    ) {
+        // Iterate over each breakpoint and insert it into the responsive definitions.
+        definitions.into_iter().for_each(|(_, definition)| {
+            // Insert the breakpoint into the responsive definitions map.
+            responsive_definitions
+                .entry(definition)
+                .or_insert_with(generates_node_styles);
+        });
+    }
+
+    /// Handles the error when access to a section in the STYLITRON AST fails.
+    ///
+    /// This function logs the error and generates a critical error notification,
+    /// which is then sent through the provided `sender`.
+    ///
+    /// # Arguments
+    /// - `node_name` (`&str`): The name of the section in the STYLITRON AST that could not be accessed.
+    /// - `sender` (`broadcast::Sender<GaladrielAlerts>`): The sender used to send error alerts.
+    fn handle_access_error(node_name: &str, sender: broadcast::Sender<GaladrielAlerts>) {
+        tracing::error!("Failed to access the `{node_name}` section in STYLITRON AST.");
+
+        // If the "node_name" section is not accessible, create a critical error.
+        let error = GaladrielError::raise_critical_other_error(
+            ErrorKind::AccessDeniedToStylitronAST,
+            &format!("Failed to access the {node_name} section in STYLITRON AST"),
+            ErrorAction::Restart,
+        );
+
+        tracing::error!("Critical error encountered: {:?}", error);
+
+        // Generate an error notification and attempt to send it via the sender.
+        let notification = GaladrielAlerts::create_galadriel_error(Local::now(), error);
+
+        if let Err(err) = sender.send(notification) {
+            tracing::error!("Failed to send notification: {}", err);
+        }
     }
 }
 

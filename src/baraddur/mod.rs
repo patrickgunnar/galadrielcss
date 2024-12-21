@@ -875,9 +875,9 @@ impl Baraddur {
 
         // Create a notification indicating that the parsing process has been completed.
         let notification = GaladrielAlerts::create_information(
-        Local::now(),
-        "The parsing process has concluded. All stages, including the interpretation, validation, and transformation of data, have been finalized. The system is now ready for subsequent operations or tasks."
-    );
+            Local::now(),
+            "The parsing process has concluded. All stages, including the interpretation, validation, and transformation of data, have been finalized. The system is now ready for subsequent operations or tasks."
+        );
 
         send_palantir_notification(notification, palantir_sender.clone());
     }

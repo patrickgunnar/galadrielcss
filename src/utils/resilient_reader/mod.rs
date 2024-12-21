@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use tracing::error;
 
 use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
@@ -27,16 +26,5 @@ pub async fn resilient_reader(path: &PathBuf) -> GaladrielResult<String> {
         tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
     }
 
-    let error_message = format!(
-        "Exceeded maximum attempts to process the path `{}`. The path could not be processed.",
-        path.to_string_lossy().to_string()
-    );
-
-    error!(error_message);
-
-    Err(GaladrielError::raise_general_other_error(
-        ErrorKind::FileReadMaxRetriesExceeded,
-        &error_message,
-        ErrorAction::Notify,
-    ))
+    Ok(String::new())
 }

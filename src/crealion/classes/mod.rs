@@ -10,7 +10,6 @@ use crate::{
     error::{ErrorAction, ErrorKind, GaladrielError},
     events::GaladrielAlerts,
     types::Stylitron,
-    utils::generates_node_styles::generates_node_styles,
 };
 
 use super::{
@@ -252,7 +251,16 @@ impl Crealion {
                                     patterns_map,
                                 );
                             }
-                            None => {}
+                            None => {
+                                // Raise a warning if the breakpoint was not found.
+                                Self::raise_class_warning(
+                                    &format!(
+                                        "The `{}` breakpoint in the `PanoramicViewer` pattern, within the `{}` class of the `{}` context, could not be identified. Consequently, the styles associated with the `{}` breakpoint were not generated. Please review the breakpoint definitions and their respective scope.",
+                                        breakpoint_name, class_name, transformed_context_name, breakpoint_name
+                                    ),
+                                    sender.clone()
+                                );
+                            }
                         },
                     );
 
@@ -590,18 +598,18 @@ impl Crealion {
                 if let Some(breakpoint_value) = breakpoint {
                     tracing::debug!("Processing breakpoint: {}", breakpoint_value);
 
-                    let breakpoints_styles = styles_definitions
-                        .entry(breakpoint_value.to_owned())
-                        .or_insert_with(generates_node_styles);
-
-                    Self::apply_utility_class_to_styles_node(
-                        pattern_name,
-                        is_important,
-                        resolved_property,
-                        utility_cls_name,
-                        resolved_value,
-                        breakpoints_styles,
-                    );
+                    styles_definitions
+                        .get_mut(breakpoint_value)
+                        .map(|breakpoints_styles| {
+                            Self::apply_utility_class_to_styles_node(
+                                pattern_name,
+                                is_important,
+                                resolved_property,
+                                utility_cls_name,
+                                resolved_value,
+                                breakpoints_styles,
+                            );
+                        });
                 }
             }
             _ => {}
