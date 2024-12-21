@@ -57,11 +57,13 @@ impl Astroform {
                 let style_rules =
                     Self::transform_pseudo_selector(&tab, &space, &newline, 2, styles_map);
 
-                // Format the rules into a `@media` query and add it to the result vector.
-                responsive_css_rules.push(format!(
-                    "@media screen and ({}){}{{{}{}{}}}",
-                    breakpoint, space, newline, style_rules, newline
-                ));
+                if !style_rules.is_empty() {
+                    // Format the rules into a `@media` query and add it to the result vector.
+                    responsive_css_rules.push(format!(
+                        "@media screen and ({}){}{{{}{}{}}}",
+                        breakpoint, space, newline, style_rules, newline
+                    ));
+                }
             }
 
             tracing::info!("Finished transforming responsive styles into CSS media queries.");

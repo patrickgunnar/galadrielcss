@@ -63,10 +63,16 @@ impl Astroform {
                 let animations =
                     Self::transform_context_animation(&tab, &space, &newline, context_animations);
 
-                formatted_css_animations.push(animations);
+                if !animations.is_empty() {
+                    formatted_css_animations.push(animations);
+                }
             }
 
             tracing::info!("Animation transformation completed.");
+
+            if formatted_css_animations.is_empty() {
+                return String::new();
+            }
 
             // Combine all animations into a single string separated by newlines.
             formatted_css_animations.join(&newline)
@@ -117,6 +123,10 @@ impl Astroform {
         });
 
         tracing::debug!("Completed transformation of context animations.");
+
+        if keyframe_rules.is_empty() {
+            return String::new();
+        }
 
         // Combine all keyframe rules into a single string separated by newlines.
         keyframe_rules.join(newline)
