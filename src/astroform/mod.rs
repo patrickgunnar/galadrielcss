@@ -59,9 +59,9 @@ impl Astroform {
         // If not minified, use typical whitespace characters for formatting.
         } else {
             Self {
-                newline: "\\u000A".to_string(),
+                newline: "\n".to_string(),
                 space: " ".to_string(),
-                tab: "\\u0009".to_string(),
+                tab: "\t".to_string(),
                 set_reset_styles,
                 palantir_sender,
                 is_minified,

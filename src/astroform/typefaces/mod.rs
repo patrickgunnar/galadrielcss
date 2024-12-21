@@ -65,7 +65,7 @@ impl Astroform {
 
                         // Format the @font-face CSS rule and add it to the list
                         let formatted_typeface = format!(
-                            "@font-face{}{{{}{}font-family:{}{};{}{}src:{}url({:#?}){}format({:#?}){}}}",
+                            "@font-face{}{{{}{}font-family:{}{};{}{}src:{}url('{}'){}format('{}'){}}}",
                             space, newline, tab, space, identifier, newline, tab, space, value, space, current_format, newline
                         );
 

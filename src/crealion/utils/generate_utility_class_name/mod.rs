@@ -10,18 +10,18 @@ pub fn generate_utility_class_name(
     value: &str,
 ) -> String {
     let abbr_breakpoint = match breakpoint {
-        Some(value) => format!("{}\\\\.", generate_abbreviation(value)),
+        Some(value) => format!("{}\\.", generate_abbreviation(value)),
         None => "".to_string(),
     };
 
     let importance_prefix = match is_important {
-        true => "\\\\!",
+        true => "\\!",
         false => "",
     };
 
     let abbr_pattern = match pattern {
         "_" => "".to_string(),
-        v => format!("{}\\\\.", generate_abbreviation(v)),
+        v => format!("{}\\.", generate_abbreviation(v)),
     };
 
     let abbr_property = generate_abbreviation(property);
