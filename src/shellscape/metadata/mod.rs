@@ -3,7 +3,7 @@ pub struct ShellscapeMetadata {
     pub title: String,
     pub subtitle: String,
     pub version: String,
-    pub author: String,
+    pub creator: String,
     pub license: String,
     pub footer: String,
 }
@@ -14,7 +14,7 @@ impl ShellscapeMetadata {
         title: String,
         subtitle: String,
         version: String,
-        author: String,
+        creator: String,
         license: String,
         footer: String,
     ) -> Self {
@@ -22,7 +22,7 @@ impl ShellscapeMetadata {
             title,
             subtitle,
             version,
-            author,
+            creator,
             license,
             footer,
         }

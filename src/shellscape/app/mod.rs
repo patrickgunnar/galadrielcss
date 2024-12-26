@@ -214,12 +214,12 @@ impl ShellscapeApp {
         self.server_running_on_port
     }
 
-    /// Returns the author of the application from the metadata.
+    /// Returns the creator of the application from the metadata.
     ///
     /// # Returns
-    /// A `String` containing the author's name.
-    pub fn get_author(&self) -> String {
-        self.metadata.author.clone()
+    /// A `String` containing the creator's name.
+    pub fn get_creator(&self) -> String {
+        self.metadata.creator.clone()
     }
 
     /// Returns the version of the application from the metadata.
@@ -391,7 +391,7 @@ impl ShellscapeApp {
             ("'Ctrl' + 'l'".to_string(), "Opens license information.".to_string()),
             ("'Ctrl' + 'd'".to_string(), "Displays the donation guide.".to_string()),
             ("'Ctrl' + 't'".to_string(), "Opens contribution information for developers.".to_string()),
-            ("'Ctrl' + 'a'".to_string(), "Displays author information.".to_string()),
+            ("'Ctrl' + 'a'".to_string(), "Displays creator's vision.".to_string()),
             ("'Ctrl' + 'Up Arrow'".to_string(), "Scrolls notifications up.".to_string()),
             ("'Ctrl' + 'Down Arrow'".to_string(), "Scrolls notifications down.".to_string()),
             ("'Shift' + 'Up Arrow'".to_string(), "Scrolls the dock up.".to_string()),
@@ -405,7 +405,6 @@ impl ShellscapeApp {
     pub fn add_license_alert(&mut self) {
         let title = "Galadriel CSS & Nenyr License Agreement";
         let content: Vec<String> = vec![
-            String::from("Galadriel CSS and Nenyr License Agreement"),
             String::from("Owner: Patrick Gunnar"),
             String::from("Products: Galadriel CSS and Nenyr"),
             String::from("Effective Date: June 28, 2024"),
@@ -435,7 +434,7 @@ impl ShellscapeApp {
             String::from("9. Attribution and Derivative Works"),
             String::from("9.1 Attribution (Optional):"),
             String::from("End users are encouraged, but not required, to include attribution to the Owner when distributing applications built using Galadriel CSS or Nenyr. This could take the form of a statement such as: \"Powered by Galadriel CSS and Nenyr\" in the application's documentation or user interface."),
-            String::from("9.2 Derivative Works (Authorization Required):"),
+            String::from("9.2 Derivative Works (Creatorization Required):"),
             String::from("Creating tools, frameworks, systems, or any derivative works that are based on or integrate Galadriel CSS or Nenyr requires prior written authorization from the Owner. This ensures proper acknowledgment and compliance with the terms of this agreement."),
             String::from("10. Entire Agreement"),
             String::from("This agreement constitutes the entire understanding between the parties regarding the use of Galadriel CSS and Nenyr and supersedes all prior agreements, negotiations, and discussions."),
@@ -454,12 +453,22 @@ impl ShellscapeApp {
 
     // Method to add a donation alert, encouraging users to support Galadriel CSS.
     pub fn add_donation_alert(&mut self) {
-        let title = "Help Galadriel CSS Grow";
+        let title = "Support Galadriel CSS";
         let content: Vec<String> = vec![
-            String::from("This is the first paragraph of dummy content. It is filled with placeholder text to simulate a real paragraph. Let's add some emojis for fun: \u{1F600}, \u{1F603}, \u{1F604}."),
-            String::from("Here is another paragraph, showcasing how \u{1F4AF} awesome this dummy text can be! Feel free to replace this text with actual content later."),
-            String::from("Adding some more lines of text here just for testing purposes. Check out these emojis: \u{1F680}, \u{1F4A1}, \u{1F3C1}."),
-            String::from("The final paragraph wraps it all up nicely. Don't forget to smile: \u{1F642}, \u{1F60A}, \u{1F60D}.")
+            String::from("Galadriel CSS is a powerful, scalable, and efficient CSS framework designed to help developers create modular and clean user interfaces with minimal overhead. Built from the ground up with performance, security, and flexibility in mind, Galadriel CSS is designed to streamline the styling process without relying on external dependencies. This makes it not only highly efficient but also highly customizable to meet the diverse needs of modern web development."),
+            String::from("Why Donate to Galadriel CSS?"),
+            String::from("As a completely independent project, Galadriel CSS has been developed with a focus on high-quality design and functionality, ensuring that it remains a valuable tool for developers who require top-tier performance and control over their styling workflows."),
+            String::from("The project aims to push the boundaries of what CSS frameworks can do, offering innovations that go beyond traditional methods, such as advanced modularity, precise context-based styling, and cutting-edge performance optimizations."),
+            String::from("Your donations will help:"),
+            String::from("Continue and Expand Development: The contributions you make will allow me to dedicate more time and resources to enhance and evolve the framework, adding new features, improving performance, and ensuring ongoing compatibility with the latest web technologies."),
+            String::from("Improve Documentation and Support: With your support, I can provide more comprehensive documentation, tutorials, and support materials that make it easier for developers to integrate Galadriel CSS into their projects."),
+            String::from("Ensure Long-Term Sustainability: While Galadriel CSS has been a labor of love, the funding will ensure that it can continue to be improved and maintained over time. This will also help with future plans to introduce even more powerful features, such as advanced asynchronous styling and integrations with additional tools and bundlers."),
+            String::from("Stay Independent: With your donations, I can continue developing Galadriel CSS as an independent project, free from external pressures, and keep it focused on delivering the best possible solution for developers."),
+            String::from("A Personal Commitment"),
+            String::from("I've been working on Galadriel CSS alone until now, dedicating countless hours to its development, refinement, and testing. Your support will not only help speed up the development process but also give me the resources needed to ensure Galadriel CSS remains cutting-edge, secure, and robust for years to come."),
+            String::from("How to Donate"),
+            String::from("If you're interested in supporting Galadriel CSS, please feel free to contact me directly at galadrielcss@gmail.com. I would be happy to discuss donation options and how your contribution can help continue the growth and evolution of this project."),
+            String::from("Thank you for considering a donation to Galadriel CSS—your support will directly impact the future of this project and help us build a more powerful and flexible framework for developers worldwide!")
         ];
 
         self.add_alert(GaladrielAlerts::create_text(
@@ -472,9 +481,8 @@ impl ShellscapeApp {
 
     // Method to add an alert for users to contribute to the project as developers.
     pub fn add_contribute_alert(&mut self) {
-        let title = "Empower Galadriel CSS with Your Skills";
+        let title = "Contribute as a Developer";
         let content: Vec<String> = vec![
-            String::from("Contribute as a Developer"),
             String::from("Galadriel CSS is a powerful, innovative framework that I envisioned to bring a highly modular and efficient CSS management system to the developer community. Built using Rust for its core functionality and TypeScript for bundler integrations, Galadriel CSS aims to offer an optimized way of managing CSS in web applications."),
             String::from("The framework is designed to scale, maintain clear and efficient code, and reduce redundant styles across projects. Its flexibility and efficiency offer significant benefits to developers, allowing them to focus more on building great products without worrying about managing bloated CSS."),
             String::from("Until now, I've built and maintained the entire framework on my own, but as the project grows, additional help and expertise are needed to ensure its continued success and evolution. If you're passionate about improving CSS workflows and want to make an impact, your contributions can help Galadriel CSS reach new heights."),
@@ -502,11 +510,10 @@ impl ShellscapeApp {
         ));
     }
 
-    // Method to add an alert with information about the author of Galadriel CSS.
-    pub fn add_about_author_alert(&mut self) {
-        let title = "Crafting Galadriel CSS: The Author\'s Insight";
+    // Method to add an alert with information about the creator of Galadriel CSS.
+    pub fn add_creator_alert(&mut self) {
+        let title = "The Vision Behind Galadriel CSS";
         let content: Vec<String> = vec![
-            String::from("The Vision Behind Galadriel CSS"),
             String::from("Galadriel CSS is a transformative framework designed to revolutionize how developers approach styling in modern web applications. Born out of the desire to break free from the limitations of traditional CSS frameworks, it embodies a vision of innovation, creativity, and practicality."),
             String::from("Where other frameworks often sacrifice flexibility for familiarity, Galadriel CSS seeks to empower developers to craft distinctive, high-performance designs while maintaining clean, efficient, and scalable codebases."),
             String::from("Why Galadriel CSS Was Created"),
@@ -534,7 +541,7 @@ impl ShellscapeApp {
         ];
 
         self.add_alert(GaladrielAlerts::create_text(
-            AlertTextType::AboutAuthor,
+            AlertTextType::Creator,
             Local::now(),
             title,
             content,
@@ -571,7 +578,7 @@ mod tests {
         let app = ShellscapeApp::new("1.0.0", sender).unwrap();
 
         assert_eq!(app.metadata.title, "Galadriel CSS");
-        assert_eq!(app.metadata.author, "Patrick Gunnar");
+        assert_eq!(app.metadata.creator, "Patrick Gunnar");
         assert_eq!(app.metadata.version, "1.0.0");
         assert_eq!(
             app.metadata.license,

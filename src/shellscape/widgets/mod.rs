@@ -81,7 +81,7 @@ impl ShellscapeWidgets {
         frame.render_widget(footer, layout[2]);
     }
 
-    /// Creates metadata for the header, such as author, license, and version information.
+    /// Creates metadata for the header, such as creator, license, and version information.
     ///
     /// # Arguments
     /// * `app` - The application state containing metadata values.
@@ -90,9 +90,9 @@ impl ShellscapeWidgets {
     /// A vector of styled spans representing metadata.
     fn create_metadata(&self, app: &mut ShellscapeApp) -> Vec<Span> {
         vec![
-            Span::styled("Author: ", Style::default().fg(self.light_cream_color)),
+            Span::styled("The Creator: ", Style::default().fg(self.light_cream_color)),
             Span::styled(
-                app.get_author(),
+                app.get_creator(),
                 Style::default()
                     .add_modifier(Modifier::BOLD)
                     .fg(self.light_cream_color),
@@ -151,9 +151,9 @@ impl ShellscapeWidgets {
         let title = format!(" {} ", app.get_title().to_uppercase());
         let mut elements = vec![];
 
-        // Add metadata (author, license, version) to the header.
-        let author = self.create_metadata(app);
-        elements.push(Line::from(author));
+        // Add metadata (creator, license, version) to the header.
+        let creator = self.create_metadata(app);
+        elements.push(Line::from(creator));
 
         // Add a blank line for spacing.
         let blank_line = Line::from(Span::raw(""));
@@ -450,7 +450,10 @@ impl ShellscapeWidgets {
             ("Reset All ASTs".to_string(), "'Shift' + 'W'".to_string()),
             ("View Shortcuts".to_string(), "'Ctrl' + 'S'".to_string()),
             ("View License".to_string(), "'Ctrl' + 'L'".to_string()),
-            ("About the Author".to_string(), "'Ctrl' + 'A'".to_string()),
+            (
+                "The Creator's Vision".to_string(),
+                "'Ctrl' + 'A'".to_string(),
+            ),
             ("Make a Donation".to_string(), "'Ctrl' + 'D'".to_string()),
             ("Contribute as Dev".to_string(), "'Ctrl' + 'T'".to_string()),
         ];
@@ -1135,7 +1138,7 @@ impl ShellscapeWidgets {
     /// - `time`: The timestamp for the alert.
     /// - `title`: The main title for the alert.
     /// - `content`: A list of strings representing the content.
-    /// - `kind`: The type of alert (e.g., about author, contribute, etc.).
+    /// - `kind`: The type of alert (e.g., creator, contribute, etc.).
     /// - `textwrap_width`: Maximum width for text wrapping in the alert.
     ///
     /// # Returns
@@ -1152,9 +1155,9 @@ impl ShellscapeWidgets {
 
         // Define colors and labels based on the alert type.
         let (time_fg, label, title_bg, icon) = match kind {
-            AlertTextType::AboutAuthor => (
+            AlertTextType::Creator => (
                 Color::Rgb(135, 206, 250),
-                "About the Author",
+                "The Creator",
                 Color::Rgb(25, 80, 120),
                 "\u{1F4DA}",
             ),

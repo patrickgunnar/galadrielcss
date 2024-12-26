@@ -99,7 +99,7 @@ impl Shellscape {
     ) -> GaladrielResult<ShellscapeApp> {
         info!("Creating Shellscape application instance with provided configurations.");
 
-        ShellscapeApp::new("1.0.0", palantir_sender)
+        ShellscapeApp::new(env!("CARGO_PKG_VERSION"), palantir_sender)
     }
 
     /// Creates and returns a Shellscape event handler with a specified tick rate.

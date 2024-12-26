@@ -98,7 +98,9 @@ use tokio::{
 };
 use tracing::Level;
 use tracing_appender::rolling;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{
+    fmt, layer::SubscriberExt, util::SubscriberInitExt, FmtSubscriber, Layer,
+};
 use utils::{
     get_updated_css::get_updated_css, replace_file::replace_file,
     restore_abstract_syntax_trees::restore_abstract_syntax_trees,
@@ -212,6 +214,24 @@ impl GaladrielRuntime {
 
     /// Starts the build mode, processing styles and generating the final output.
     async fn start_build_mode(&mut self) -> GaladrielResult<()> {
+        // Creates the build logs subscriber.
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(tracing_subscriber::filter::LevelFilter::ERROR),
+        );
+
+        // Starts the build subscriber.
+        subscriber.try_init().map_err(|err| {
+            tracing::error!("Failed to set log subscriber: {:?}", err.to_string());
+
+            GaladrielError::raise_critical_runtime_error(
+                ErrorKind::TracingSubscriberInitializationFailed,
+                &err.to_string(),
+                ErrorAction::Exit,
+            )
+        })?;
+
         tracing::info!("Starting build mode.");
 
         // Load the galadriel configurations.
@@ -560,7 +580,7 @@ impl GaladrielRuntime {
             }
             ShellscapeCommands::AboutAuthor => {
                 // Display information about the author in the alerts table.
-                shellscape_app.add_about_author_alert();
+                shellscape_app.add_creator_alert();
             }
             ShellscapeCommands::ScrollUp { column, row } => {
                 // Handle scrolling up based on the event's column and row.

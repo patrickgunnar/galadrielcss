@@ -13,7 +13,7 @@ pub enum GaladrielEvents {
 pub enum AlertTextType {
     Donation,
     License,
-    AboutAuthor,
+    Creator,
     ContributeAsDev,
 }
 
