@@ -25,7 +25,7 @@ pub struct ConfigurationJson {
 
     /// Boolean flag indicating whether names should be injected during the process.
     /// Renamed in JSON as `autoNaming` and defaults to `true`.
-    #[serde(rename = "autoNaming", default = "enabled_by_default")]
+    #[serde(rename = "autoNaming", default = "disenabled_by_default")]
     pub auto_naming: bool,
 
     /// Boolean flag specifying whether styles should be reset.
@@ -52,6 +52,13 @@ fn enabled_by_default() -> bool {
     tracing::info!("Setting default: true");
 
     true
+}
+
+/// Returns `false` as the default value, used for fields requiring a disenabled default state.
+fn disenabled_by_default() -> bool {
+    tracing::info!("Setting default: false");
+
+    false
 }
 
 /// Returns an empty `Vec<String>` as the default, used for the `exclude` field.
@@ -143,7 +150,7 @@ impl GaladrielConfig {
             return *flag;
         }
 
-        true
+        false
     }
 
     /// Retrieves the current state of the `ResetStyles` configuration.
@@ -261,7 +268,7 @@ pub fn switch_minified_styles() {
 pub fn get_auto_naming() -> bool {
     match CONFIGATRON.get("autoNaming") {
         Some(ref auto_naming) => auto_naming.get_auto_naming(),
-        None => true,
+        None => false,
     }
 }
 
