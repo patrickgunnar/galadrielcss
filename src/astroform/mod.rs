@@ -362,7 +362,7 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", *CASCADEX),
-            "{\"cascading_sheet\": \"@import url(\\\"https://fonts.googleapis.com/css2?family=Matemasie&display=swap\\\");@font-face{font-family:roseMartin;src:url(\\\"../typefaces/rosemartin.regular.otf\\\")format(\\\"otf\\\")}:root{--gW1yAqTMgoH:#FF6677;}@media(prefers-color-scheme:light){:root{--gNKGUE7AAmy:#FFFFFF;}}@media(prefers-color-scheme:dark){:root{--gNKGUE7AAmy:#000000;}}@keyframes gsZ0H7sD2jUx{0%{background-color:red}50%{background-color:green}100%{background-color:blue}}.\\\\!bgd-rTLF{background:#00FF00!important}@media screen and (min-width:740px){.\\\\!bgd-rTLF{background:#FFF000!important}}\"}".to_string()
+            "{\"cascading_sheet\": \"@import url(\\\"https://fonts.googleapis.com/css2?family=Matemasie&display=swap\\\");@font-face{font-family:roseMartin;src:url(\\\"../typefaces/rosemartin.regular.otf\\\")format(\\\"opentype\\\")}:root{--gW1yAqTMgoH:#FF6677;}@media(prefers-color-scheme:light){:root{--gNKGUE7AAmy:#FFFFFF;}}@media(prefers-color-scheme:dark){:root{--gNKGUE7AAmy:#000000;}}@keyframes gsZ0H7sD2jUx{0%{background-color:red}50%{background-color:green}100%{background-color:blue}}.\\\\!bgd-rTLF{background:#00FF00!important}@media screen and (min-width:740px){.\\\\!bgd-rTLF{background:#FFF000!important}}\"}".to_string()
         );
     }
 

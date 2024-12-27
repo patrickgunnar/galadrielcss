@@ -710,7 +710,10 @@ mod classes_tests {
     use nenyr::types::{ast::NenyrAst, central::CentralContext, class::NenyrStyleClass};
     use tokio::sync::broadcast;
 
-    use crate::{asts::STYLITRON, crealion::Crealion, types::Stylitron};
+    use crate::{
+        asts::STYLITRON, crealion::Crealion, types::Stylitron,
+        utils::generates_node_styles::generates_node_styles,
+    };
 
     fn mock_breakpoints() {
         let map = IndexMap::from([(
@@ -719,6 +722,13 @@ mod classes_tests {
         )]);
 
         STYLITRON.insert("breakpoints".to_string(), Stylitron::Breakpoints(map));
+        STYLITRON.insert(
+            "responsive".to_string(),
+            Stylitron::ResponsiveStyles(IndexMap::from([(
+                "min-width:740px".to_string(),
+                generates_node_styles(),
+            )])),
+        );
     }
 
     fn mock_classes() -> IndexMap<String, NenyrStyleClass> {

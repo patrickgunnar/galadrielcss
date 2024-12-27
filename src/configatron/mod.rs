@@ -512,7 +512,7 @@ mod tests {
 
         // Check default values
         assert_eq!(config.exclude, Vec::<String>::new());
-        assert!(config.auto_naming);
+        assert!(!config.auto_naming);
         assert!(config.reset_styles);
         assert!(config.minified_styles);
         assert_eq!(config.port, "0");
