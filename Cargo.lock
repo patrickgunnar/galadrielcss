@@ -1034,6 +1034,8 @@ dependencies = [
 [[package]]
 name = "nenyr"
 version = "1.0.0-beta.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81c09a434a513eb9fab0285dd7eb80e0194c6febb297a09e5931d27d2551fa96"
 dependencies = [
  "indexmap",
  "lazy_static",
