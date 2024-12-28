@@ -30,6 +30,7 @@ regex = "1.11.1"
 axum = "0.7.9"
 filetime = "0.2.25"
 
+openssl = { version = "0.10.68", features = ["vendored"] }
 tokio = { version = "1.41.0", features = ["full"] }
 tokio-tungstenite = { version = "0.24.0", features = ["native-tls"] }
 serde = { version = "1.0.214", features = ["derive"] }
