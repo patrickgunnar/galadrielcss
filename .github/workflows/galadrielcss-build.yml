@@ -1,4 +1,4 @@
-name: Build and Test GaladrielCSS
+name: Build GaladrielCSS
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
           - x86_64-pc-windows-msvc
           - x86_64-apple-darwin
           - aarch64-apple-darwin
-    runs-on: ${{ matrix.platform == 'x86_64-pc-windows-msvc' && 'windows-latest' || ( matrix.platform == 'x86_64-apple-darwin' || matrix.platform == 'aarch64-apple-darwin' ) && 'macos-latest' || 'ubuntu-16.04' }}
+    runs-on: ${{ matrix.platform == 'x86_64-pc-windows-msvc' && 'windows-latest' || ( matrix.platform == 'x86_64-apple-darwin' || matrix.platform == 'aarch64-apple-darwin' ) && 'macos-latest' || 'ubuntu-latest' }}
 
     steps:
       - uses: actions/checkout@v4
